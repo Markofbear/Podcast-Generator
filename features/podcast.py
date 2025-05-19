@@ -1,13 +1,16 @@
 import os
-import wikipediaapi
-import fitz
 import glob
+import fitz
 import pyttsx3
-from pydub import AudioSegment
+import requests
+import wikipediaapi
 from datetime import datetime
 from urllib.parse import unquote
-
-
+from pydub import AudioSegment
+from dotenv import load_dotenv
+import google.generativeai as genai
+from google.cloud import texttospeech
+from elevenlabs.client import ElevenLabs
 class PodcastGenerator:
     def __init__(self, provider="pyttsx3", log_func=print):
         load_dotenv()
