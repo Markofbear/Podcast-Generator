@@ -88,8 +88,11 @@ class PodcastGenerator:
     def extract_text_from_txt(self, file_path):
         with open(file_path, "r", encoding="utf-8") as f:
             return f.read()
-
+        
     def summarize_and_format_dialogue(self, text, speakers, target_length):
+        from dotenv import load_dotenv
+        load_dotenv()
+
         import google.generativeai as genai
 
         length_map = {
@@ -115,11 +118,10 @@ class PodcastGenerator:
         {text}
         """
 
+        genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
         model = genai.GenerativeModel("gemini-2.0-flash-lite")
         response = model.generate_content(prompt)
         return response.text
-
-
 
     def create_dialogue(self, dialogue_text):
         lines = dialogue_text.strip().split("\n")
