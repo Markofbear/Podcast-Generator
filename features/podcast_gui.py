@@ -21,6 +21,7 @@ from features.podcast_generator import PodcastGeneratorWorker
 class PodcastGeneratorUI(QWidget):
     def __init__(self):
         super().__init__()
+        load_dotenv()
         self.setWindowTitle("Podcast Generator")
         self.stop_requested = False
         self.thread = None
@@ -28,6 +29,7 @@ class PodcastGeneratorUI(QWidget):
 
         layout = QVBoxLayout()
 
+        # Logo
         logo_label = QLabel()
         pixmap = QPixmap("assets/podcast_logo.png")
         if not pixmap.isNull():
@@ -35,13 +37,13 @@ class PodcastGeneratorUI(QWidget):
             logo_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(logo_label)
 
+        # Podcast Length
         self.length_dropdown = QComboBox()
-        self.length_dropdown.addItems(
-            ["Short (5 min)", "Medium (10 min)", "Long (20 min)"]
-        )
+        self.length_dropdown.addItems(["Short (5 min)", "Medium (10 min)", "Long (20 min)"])
         layout.addWidget(QLabel("Select Podcast Length:"))
         layout.addWidget(self.length_dropdown)
 
+        # Source type
         self.source_type_dropdown = QComboBox()
         self.source_type_dropdown.addItems(["Wikipedia", "PDF", "TXT"])
         self.source_type_dropdown.currentIndexChanged.connect(self.toggle_source_input)
@@ -57,19 +59,16 @@ class PodcastGeneratorUI(QWidget):
         self.browse_button.clicked.connect(self.browse_file)
         layout.addWidget(self.browse_button)
 
+        # Voice provider
         self.provider_dropdown = QComboBox()
         self.provider_dropdown.addItem("pyttsx3 (Low Quality - Free)", "pyttsx3")
-        self.provider_dropdown.addItem(
-            "Google (Mid Quality - API Key Required)", "google"
-        )
-        self.provider_dropdown.addItem(
-            "ElevenLabs (High Quality - Account Required)", "elevenlabs"
-        )
+        self.provider_dropdown.addItem("Google (Mid Quality - API Key Required)", "google")
+        self.provider_dropdown.addItem("ElevenLabs (High Quality - Account Required)", "elevenlabs")
         self.provider_dropdown.addItem("OpenAI (Mid-High Quality - API Key Required)", "openai")
-
         layout.addWidget(QLabel("Select Voice:"))
         layout.addWidget(self.provider_dropdown)
 
+        # Speakers
         self.speaker_list = QListWidget()
         self.speaker_list.setSelectionMode(QListWidget.MultiSelection)
         for name in ["Bonnie", "Clyde", "Alice", "Bob"]:
@@ -79,6 +78,7 @@ class PodcastGeneratorUI(QWidget):
         layout.addWidget(QLabel("Select Speakers:"))
         layout.addWidget(self.speaker_list)
 
+        # Buttons
         self.generate_button = QPushButton("Generate Podcast")
         self.generate_button.clicked.connect(self.start_podcast_generation)
         layout.addWidget(self.generate_button)
@@ -92,6 +92,7 @@ class PodcastGeneratorUI(QWidget):
         self.play_button.clicked.connect(self.play_latest_podcast)
         layout.addWidget(self.play_button)
 
+        # Progress bar and log
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
         layout.addWidget(QLabel("Progress:"))
@@ -115,7 +116,6 @@ class PodcastGeneratorUI(QWidget):
             self.browse_button.setVisible(False)
             self.source_input.setEnabled(True)
             self.source_input.setPlaceholderText("Enter Wikipedia URL")
-            self.source_input.clear()
         else:
             self.browse_button.setVisible(True)
             self.source_input.setEnabled(False)
@@ -124,9 +124,7 @@ class PodcastGeneratorUI(QWidget):
 
     def browse_file(self):
         file_filter = "PDF files (*.pdf);;Text files (*.txt);;All files (*.*)"
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select Source File", "", file_filter
-        )
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Source File", "", file_filter)
         if file_path:
             self.source_input.setText(file_path)
 
@@ -143,10 +141,8 @@ class PodcastGeneratorUI(QWidget):
         QApplication.processEvents()
 
     def start_podcast_generation(self):
-        if self.thread is not None and self.thread.isRunning():
-            self.log(
-                "❗ Please wait for current generation to finish before starting a new one."
-            )
+        if self.thread and self.thread.isRunning():
+            self.log("❗ Please wait for current generation to finish.")
             return
 
         source = self.source_input.text().strip()
@@ -156,7 +152,7 @@ class PodcastGeneratorUI(QWidget):
         target_length = self.length_dropdown.currentText()
 
         if not source:
-            self.log("Please enter a valid source.")
+            self.log("❌ Please enter a valid source.")
             return
         if len(speakers) < 2:
             self.log("❌ Please select at least two speakers.")
@@ -164,8 +160,8 @@ class PodcastGeneratorUI(QWidget):
 
         self.stop_requested = False
         self.stop_button.setEnabled(True)
-        self.progress_bar.setValue(0)
         self.progress_bar.setVisible(True)
+        self.progress_bar.setValue(0)
         self.generate_button.setEnabled(False)
         self.log(f"Starting podcast generation for: {source}")
 
@@ -177,9 +173,7 @@ class PodcastGeneratorUI(QWidget):
 
         self.worker.log_signal.connect(self.log)
         self.worker.progress_signal.connect(self.update_progress)
-        self.worker.stopped_signal.connect(
-            lambda: self.log("🛑 Podcast generation stopped.")
-        )
+        self.worker.stopped_signal.connect(lambda: self.log("🛑 Podcast generation stopped."))
         self.worker.finished.connect(self.on_generation_finished)
 
         self.thread.started.connect(self.worker.run)
@@ -191,33 +185,27 @@ class PodcastGeneratorUI(QWidget):
         self.stop_button.setEnabled(False)
         self.progress_bar.setVisible(False)
         self.generate_button.setEnabled(True)
-
-        if self.thread:
-            self.thread.quit()
-            self.thread.wait()
-            self.thread = None
-            self.worker = None
-
+        self.thread.quit()
+        self.thread.wait()
+        self.thread = None
+        self.worker = None
         self.log("✅ Podcast generation process finished.")
 
     def closeEvent(self, event):
-        if hasattr(self, "thread") and self.thread and self.thread.isRunning():
+        if self.thread and self.thread.isRunning():
             self.log("Waiting for background task to finish...")
             self.thread.quit()
             self.thread.wait()
         event.accept()
 
     def play_latest_podcast(self):
-        podcast_files = sorted(
-            glob.glob("podcast/*.mp3"), key=os.path.getmtime, reverse=True
-        )
+        podcast_files = sorted(glob.glob("podcast/*.mp3"), key=os.path.getmtime, reverse=True)
         if not podcast_files:
             self.log("❌ No podcast files found.")
             return
 
         latest_podcast = podcast_files[0]
         self.log(f"▶ Opening: {latest_podcast}")
-
         try:
             if platform.system() == "Windows":
                 os.startfile(latest_podcast)
@@ -227,3 +215,11 @@ class PodcastGeneratorUI(QWidget):
                 subprocess.call(["xdg-open", latest_podcast])
         except Exception as e:
             self.log(f"❌ Failed to open podcast: {str(e)}")
+
+
+if __name__ == "__main__":
+    app = QApplication([])
+    window = PodcastGeneratorUI()
+    window.resize(600, 800)
+    window.show()
+    app.exec()
