@@ -215,11 +215,3 @@ class PodcastGeneratorUI(QWidget):
                 subprocess.call(["xdg-open", latest_podcast])
         except Exception as e:
             self.log(f"❌ Failed to open podcast: {str(e)}")
-
-
-if __name__ == "__main__":
-    app = QApplication([])
-    window = PodcastGeneratorUI()
-    window.resize(600, 800)
-    window.show()
-    app.exec()
