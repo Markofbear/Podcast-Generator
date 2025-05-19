@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QPixmap
 from PySide6.QtCore import Qt, QThread
 from features.podcast_generator import PodcastGeneratorWorker
-
+from dotenv import load_dotenv
 
 class PodcastGeneratorUI(QWidget):
     def __init__(self):
