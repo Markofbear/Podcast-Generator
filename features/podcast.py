@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 import google.generativeai as genai
 from google.cloud import texttospeech
 from elevenlabs.client import ElevenLabs
+
 class PodcastGenerator:
     def __init__(self, provider="pyttsx3", log_func=print):
         load_dotenv()
@@ -20,31 +21,29 @@ class PodcastGenerator:
 
         os.makedirs("podcast/chunks", exist_ok=True)
         os.makedirs("podcast", exist_ok=True)
-
         self.voice_map = {
             "Bonnie": {
                 "google": "en-US-Wavenet-C",
-                "elevenlabs": "EXAVITQu4vr4xnSDxMaL",
-                "pyttsx3": "Zira",
-                "openai": "alloy",
-            },
-            "Clyde": {
-                "google": "en-US-Wavenet-D",
-                "elevenlabs": "TxGEqnHWrfWFTfGW9XjX",
-                "pyttsx3": "David",
-                "openai": "echo",
-            },
-            "Alice": {
-                "google": "en-US-Wavenet-F",
-                "elevenlabs": "EXAVITQu4vr4xnSDxMaL",
+                "elevenlabs": "lxYfHSkYm1EzQzGhdbfc",
                 "pyttsx3": "Zira",
                 "openai": "nova",
             },
+            "Clyde": {
+                "google": "en-US-Wavenet-D",
+                "elevenlabs": "pVnrL6sighQX7hVz89cp",
+                "pyttsx3": "David",
+                "openai": "fable",
+            },
+            "Alice": {
+                "google": "en-US-Wavenet-F",
+                "elevenlabs": "aEO01A4wXwd1O8GPgGlF",
+                "openai": "shimmer",
+            },
             "Bob": {
                 "google": "en-US-Wavenet-B",
-                "elevenlabs": "TxGEqnHWrfWFTfGW9XjX",
+                "elevenlabs": "UgBBYS2sOqTuMpoF3BR0",
                 "pyttsx3": "Mark",
-                "openai": "shimmer",
+                "openai": "onyx",
             },
         }
 
@@ -83,31 +82,77 @@ class PodcastGenerator:
         target_words = word_count_map.get(target_length, 1000)
         speaker_list = ", ".join(speakers)
 
-        prompt = f"""
-        You are tasked with converting the following article into a **detailed, engaging dialogue** between {speaker_list}.
 
-        **Instructions:**
-        - Aim for a total length of **approximately {target_words} words**.
-        - Make the conversation **natural and dynamic**, with **back-and-forth exchanges**.
-        - Include **questions, clarifications, and detailed explanations**.
-        - Use this speaker format:  
-        SpeakerName: Their line of dialogue.
+        base_prompt = f"""
+        You are tasked with converting the following article into a detailed, engaging dialogue between {speaker_list}.
 
-        **Article content:**
+        Instructions:
+        - Aim for approximately {target_words} words total.
+        - Make the conversation natural and dynamic, with back-and-forth exchanges.
+        - Include questions, clarifications, and detailed explanations.
+        - They may disagree and debate the topic.
+        - They can interrupt each other but without losing context.
+        - Do NOT include any stage directions, sound effects, or descriptions such as (laughing), [coughs], *sighs*, or any text in brackets or parentheses.
+        - Only output spoken dialogue in the format:
+        SpeakerName: Their spoken line.
+
+        Article content:
         {text}
-        """
-
+    """
         model = genai.GenerativeModel("gemini-2.0-flash")
-        response = model.generate_content(prompt)
-        return response.text
+        response = model.generate_content(base_prompt)
+        dialogue_text = response.text
+        dialogues = self.create_dialogue(dialogue_text)
+
+        # Fallback prompt if no usable dialogue was returned
+        if not dialogues:
+            self.log("⚠️ Gemini didn't return usable dialogue. Retrying with fallback prompt...")
+
+            fallback_prompt = f"""
+            Simulate a podcast-style **interview or conversation** between {speaker_list}
+            based on the following text. The goal is to **explore ideas, ask questions, and reflect**
+            on the topic in a way that's natural, thoughtful, and human.
+
+            **Instructions:**
+            - Do not summarize — instead, let the speakers discuss the concepts in depth.
+            - Alternate turns. They may ask questions, challenge assumptions, or agree/disagree.
+            - Format: SpeakerName: dialogue
+
+            **Text to explore:**
+            {text}
+            """
+
+            response = model.generate_content(fallback_prompt)
+            dialogue_text = response.text
+            dialogues = self.create_dialogue(dialogue_text)
+
+            if not dialogues:
+                raise RuntimeError("No dialogues detected. Gemini failed on both prompt attempts.")
+
+        return dialogues
+
 
     def create_dialogue(self, dialogue_text):
         lines = dialogue_text.strip().split("\n")
-        return [
-            (speaker.strip().strip("*"), text.strip())
-            for line in lines if ":" in line
-            for speaker, text in [line.split(":", 1)]
-        ]
+        dialogues = []
+
+        for line in lines:
+            if ":" not in line:
+                continue
+            try:
+                speaker, text = line.split(":", 1)
+                speaker = speaker.strip().replace("*", "").replace("**", "").strip()
+                text = text.strip()
+                if not speaker or not text:
+                    continue
+                if speaker not in self.voice_map:
+                    self.log(f"⚠️ Skipping unknown speaker: {speaker}")
+                    continue
+                dialogues.append((speaker, text))
+            except Exception as e:
+                self.log(f"⚠️ Skipping malformed line: {line.strip()} — {e}")
+
+        return dialogues
 
     def text_to_speech(self, text, speaker_name, filename):
         if self.provider == "google":
@@ -167,7 +212,7 @@ class PodcastGenerator:
         else:
             raise ValueError(f"Unsupported TTS provider: {self.provider}")
 
-    def generate_podcast(self, source, source_type, speakers, target_length, stop_callback=None, progress_callback=None):
+    def generate_podcast(self, source, source_type, speakers, target_length, stop_callback=None, progress_callback=None, background_music=False):
         self.stopped_early = False
 
         if source_type == "Wikipedia":
@@ -183,8 +228,7 @@ class PodcastGenerator:
             raise ValueError(f"Unsupported source type: {source_type}")
 
         self.log("Summarizing and formatting as dialogue...")
-        dialogue_text = self.summarize_and_format_dialogue(content_text, speakers, target_length)
-        dialogues = self.create_dialogue(dialogue_text)
+        dialogues = self.summarize_and_format_dialogue(content_text, speakers, target_length)
         if not dialogues:
             raise RuntimeError("No dialogues detected. Check Gemini output formatting.")
 
@@ -212,7 +256,71 @@ class PodcastGenerator:
         podcast = sum(audio_segments[1:], audio_segments[0])
         base_name = source.split("/")[-1] if source_type == "Wikipedia" else os.path.splitext(os.path.basename(source))[0]
         timestamp = datetime.now().strftime("%d-%m_%H-%M")
-        output_path = f"podcast/{base_name}_{len(speakers)}Speakers_{timestamp}.mp3"
-        podcast.export(output_path, format="mp3")
-        self.log(f"✅ Podcast created: {output_path}")
+        temp_path = f"podcast/{base_name}_{len(speakers)}Speakers_{timestamp}_raw.mp3"
+        podcast.export(temp_path, format="mp3")
+
+        if background_music:
+            self.log("🎧 Adding background music...")
+            final_path = f"podcast/{base_name}_{len(speakers)}Speakers_{timestamp}_bg.mp3"
+            mix_background_music(temp_path, final_path)
+            os.remove(temp_path)
+            self.log(f"✅ Final podcast with music saved: {final_path}")
+        else:
+            final_path = f"podcast/{base_name}_{len(speakers)}Speakers_{timestamp}.mp3"
+            os.rename(temp_path, final_path)
+            self.log(f"✅ Final podcast saved: {final_path}")
+
         self.cleanup_chunks()
+
+JAMENDO_CLIENT_ID = os.getenv("JAMENDO_CLIENT_ID")
+
+def fetch_jamendo_track(tag="lofi"):
+    url = "https://api.jamendo.com/v3.0/tracks/"
+    params = {
+        "client_id": JAMENDO_CLIENT_ID,
+        "format": "json",
+        "limit": 1,
+        "fuzzytags": tag,
+        "audioformat": "mp32",
+        "license_ccurl": "true",
+        "include": "musicinfo",
+        "order": "popularity_total"
+    }
+    response = requests.get(url, params=params)
+    data = response.json()
+    if data["headers"]["status"] == "success" and data["results"]:
+        track = data["results"][0]
+        return track["audio"], track["name"], track["artist_name"]
+    return None, None, None
+
+def download_mp3(url, filename="background.mp3"):
+    with requests.get(url, stream=True) as r:
+        r.raise_for_status()
+        with open(filename, 'wb') as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                f.write(chunk)
+    return filename
+
+def mix_background_music(podcast_path, output_path="podcast/final_with_bgmusic.mp3", volume_reduction_db=20):
+    print("🎧 Adding Jamendo background music...")
+    url, title, artist = fetch_jamendo_track("lofi")
+    if not url:
+        print("❌ Failed to fetch Jamendo track.")
+        return
+
+    bg_path = download_mp3(url, "bgmusic.mp3")
+
+    podcast = AudioSegment.from_mp3(podcast_path)
+    bg_music = AudioSegment.from_mp3(bg_path) - volume_reduction_db
+
+    # Loop the music to match podcast length
+    loops_needed = (len(podcast) // len(bg_music)) + 1
+    bg_music_looped = bg_music * loops_needed
+    bg_music_looped = bg_music_looped[:len(podcast)]
+
+    mixed = podcast.overlay(bg_music_looped)
+    mixed.export(output_path, format="mp3")
+
+    print(f"✅ Background music added and saved to: {output_path}")
+    print(f"🎵 Track used: {title} by {artist}")
+

@@ -12,6 +12,8 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QProgressBar,
+    QCheckBox,
+    QHBoxLayout  
 )
 from PySide6.QtGui import QPixmap
 from PySide6.QtCore import Qt, QThread
@@ -27,83 +29,93 @@ class PodcastGeneratorUI(QWidget):
         self.thread = None
         self.worker = None
 
-        layout = QVBoxLayout()
+        main_layout = QHBoxLayout()
+        left_layout = QVBoxLayout()
+        right_layout = QVBoxLayout()
 
-        # Logo
         logo_label = QLabel()
         pixmap = QPixmap("assets/podcast_logo.png")
         if not pixmap.isNull():
             logo_label.setPixmap(pixmap.scaledToWidth(200, Qt.SmoothTransformation))
             logo_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(logo_label)
+        left_layout.addWidget(logo_label)
 
-        # Podcast Length
         self.length_dropdown = QComboBox()
         self.length_dropdown.addItems(["Short (5 min)", "Medium (10 min)", "Long (20 min)"])
-        layout.addWidget(QLabel("Select Podcast Length:"))
-        layout.addWidget(self.length_dropdown)
+        left_layout.addWidget(QLabel("Select Podcast Length:"))
+        left_layout.addWidget(self.length_dropdown)
 
-        # Source type
         self.source_type_dropdown = QComboBox()
         self.source_type_dropdown.addItems(["Wikipedia", "PDF", "TXT"])
         self.source_type_dropdown.currentIndexChanged.connect(self.toggle_source_input)
-        layout.addWidget(QLabel("Select Source Type:"))
-        layout.addWidget(self.source_type_dropdown)
+        left_layout.addWidget(QLabel("Select Source Type:"))
+        left_layout.addWidget(self.source_type_dropdown)
 
         self.source_input = QLineEdit()
         self.source_input.setPlaceholderText("Enter Wikipedia URL or file path")
-        layout.addWidget(QLabel("Source:"))
-        layout.addWidget(self.source_input)
+        left_layout.addWidget(QLabel("Source:"))
+        left_layout.addWidget(self.source_input)
 
         self.browse_button = QPushButton("Browse File")
         self.browse_button.clicked.connect(self.browse_file)
-        layout.addWidget(self.browse_button)
+        left_layout.addWidget(self.browse_button)
 
-        # Voice provider
         self.provider_dropdown = QComboBox()
         self.provider_dropdown.addItem("pyttsx3 (Low Quality - Free)", "pyttsx3")
         self.provider_dropdown.addItem("Google (Mid Quality - API Key Required)", "google")
         self.provider_dropdown.addItem("ElevenLabs (High Quality - Account Required)", "elevenlabs")
         self.provider_dropdown.addItem("OpenAI (Mid-High Quality - API Key Required)", "openai")
-        layout.addWidget(QLabel("Select Voice:"))
-        layout.addWidget(self.provider_dropdown)
+        left_layout.addWidget(QLabel("Select Voice:"))
+        left_layout.addWidget(self.provider_dropdown)
 
-        # Speakers
         self.speaker_list = QListWidget()
         self.speaker_list.setSelectionMode(QListWidget.MultiSelection)
         for name in ["Bonnie", "Clyde", "Alice", "Bob"]:
             item = QListWidgetItem(name)
             item.setSelected(name in ["Bonnie", "Clyde"])
             self.speaker_list.addItem(item)
-        layout.addWidget(QLabel("Select Speakers:"))
-        layout.addWidget(self.speaker_list)
+        left_layout.addWidget(QLabel("Select Speakers:"))
+        left_layout.addWidget(self.speaker_list)
 
-        # Buttons
+        self.bg_music_checkbox = QCheckBox("Add background music")
+        self.bg_music_checkbox.setChecked(True)
+        left_layout.addWidget(self.bg_music_checkbox)
+
         self.generate_button = QPushButton("Generate Podcast")
         self.generate_button.clicked.connect(self.start_podcast_generation)
-        layout.addWidget(self.generate_button)
+        left_layout.addWidget(self.generate_button)
 
         self.stop_button = QPushButton("Stop Generation")
         self.stop_button.clicked.connect(self.request_stop)
         self.stop_button.setEnabled(False)
-        layout.addWidget(self.stop_button)
+        left_layout.addWidget(self.stop_button)
 
         self.play_button = QPushButton("Play Latest Podcast")
         self.play_button.clicked.connect(self.play_latest_podcast)
-        layout.addWidget(self.play_button)
+        left_layout.addWidget(self.play_button)
 
-        # Progress bar and log
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
-        layout.addWidget(QLabel("Progress:"))
-        layout.addWidget(self.progress_bar)
+        left_layout.addWidget(QLabel("Progress:"))
+        left_layout.addWidget(self.progress_bar)
 
         self.log_output = QTextEdit()
         self.log_output.setReadOnly(True)
-        layout.addWidget(QLabel("Log Output:"))
-        layout.addWidget(self.log_output)
+        right_layout.addWidget(QLabel("Log Output:"))
+        right_layout.addWidget(self.log_output)
 
-        self.setLayout(layout)
+        self.podcast_list = QListWidget()
+        self.podcast_list.setSelectionMode(QListWidget.SingleSelection)
+        self.podcast_list.setMinimumHeight(150)
+        self.podcast_list.itemClicked.connect(self.play_selected_podcast)
+        right_layout.addWidget(QLabel("Available Podcasts:"))
+        right_layout.addWidget(self.podcast_list)
+        self.refresh_podcast_list()
+
+        main_layout.addLayout(left_layout, stretch=3)
+        main_layout.addLayout(right_layout, stretch=2)
+
+        self.setLayout(main_layout)
         self.toggle_source_input(0)
 
     def log(self, message):
@@ -166,8 +178,10 @@ class PodcastGeneratorUI(QWidget):
         self.log(f"Starting podcast generation for: {source}")
 
         self.thread = QThread()
+        background_music = self.bg_music_checkbox.isChecked()
+
         self.worker = PodcastGeneratorWorker(
-            source, source_type, provider, speakers, target_length, self.check_stop
+            source, source_type, provider, speakers, target_length, self.check_stop, background_music
         )
         self.worker.moveToThread(self.thread)
 
@@ -190,7 +204,8 @@ class PodcastGeneratorUI(QWidget):
         self.thread = None
         self.worker = None
         self.log("✅ Podcast generation process finished.")
-
+        self.refresh_podcast_list()
+        
     def closeEvent(self, event):
         if self.thread and self.thread.isRunning():
             self.log("Waiting for background task to finish...")
@@ -215,3 +230,27 @@ class PodcastGeneratorUI(QWidget):
                 subprocess.call(["xdg-open", latest_podcast])
         except Exception as e:
             self.log(f"❌ Failed to open podcast: {str(e)}")
+
+    def refresh_podcast_list(self):
+        self.podcast_list.clear()
+        files = sorted(
+            glob.glob("podcast/*.mp3"),
+            key=os.path.getmtime,
+            reverse=True
+        )
+        for f in files:
+            self.podcast_list.addItem(os.path.basename(f))
+
+    def play_selected_podcast(self, item):
+        selected = item.text()
+        full_path = os.path.join("podcast", selected)
+        self.log(f"▶ Playing selected podcast: {selected}")
+        try:
+            if platform.system() == "Windows":
+                os.startfile(full_path)
+            elif platform.system() == "Darwin":
+                subprocess.call(["open", full_path])
+            else:
+                subprocess.call(["xdg-open", full_path])
+        except Exception as e:
+            self.log(f"❌ Failed to play podcast: {str(e)}")
