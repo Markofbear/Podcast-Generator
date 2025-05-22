@@ -12,6 +12,7 @@ import google.generativeai as genai
 from google.cloud import texttospeech
 from elevenlabs.client import ElevenLabs
 
+
 class PodcastGenerator:
     def __init__(self, provider="pyttsx3", log_func=print):
         load_dotenv()
@@ -48,8 +49,14 @@ class PodcastGenerator:
             },
         }
 
-        self.gcp_client = texttospeech.TextToSpeechClient() if provider == "google" else None
-        self.eleven_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY")) if provider == "elevenlabs" else None
+        self.gcp_client = (
+            texttospeech.TextToSpeechClient() if provider == "google" else None
+        )
+        self.eleven_client = (
+            ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
+            if provider == "elevenlabs"
+            else None
+        )
         genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
     def cleanup_chunks(self):
@@ -83,7 +90,6 @@ class PodcastGenerator:
         target_words = word_count_map.get(target_length, 1000)
         speaker_list = ", ".join(speakers)
 
-
         base_prompt = f"""
         You are tasked with converting the following article into a detailed, engaging dialogue between {speaker_list}.
 
@@ -107,7 +113,9 @@ class PodcastGenerator:
 
         # Fallback prompt if no usable dialogue was returned
         if not dialogues:
-            self.log("⚠️ Gemini didn't return usable dialogue. Retrying with fallback prompt...")
+            self.log(
+                "⚠️ Gemini didn't return usable dialogue. Retrying with fallback prompt..."
+            )
 
             fallback_prompt = f"""
             Simulate a podcast-style **interview or conversation** between {speaker_list}
@@ -128,10 +136,11 @@ class PodcastGenerator:
             dialogues = self.create_dialogue(dialogue_text)
 
             if not dialogues:
-                raise RuntimeError("No dialogues detected. Gemini failed on both prompt attempts.")
+                raise RuntimeError(
+                    "No dialogues detected. Gemini failed on both prompt attempts."
+                )
 
         return dialogues
-
 
     def create_dialogue(self, dialogue_text):
         lines = dialogue_text.strip().split("\n")
@@ -159,8 +168,12 @@ class PodcastGenerator:
         if self.provider == "google":
             voice_id = self.voice_map[speaker_name]["google"]
             input_text = texttospeech.SynthesisInput(text=text)
-            voice = texttospeech.VoiceSelectionParams(language_code="en-US", name=voice_id)
-            config = texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.MP3)
+            voice = texttospeech.VoiceSelectionParams(
+                language_code="en-US", name=voice_id
+            )
+            config = texttospeech.AudioConfig(
+                audio_encoding=texttospeech.AudioEncoding.MP3
+            )
             response = self.gcp_client.synthesize_speech(input_text, voice, config)
             with open(filename, "wb") as f:
                 f.write(response.audio_content)
@@ -183,17 +196,19 @@ class PodcastGenerator:
                 "https://api.openai.com/v1/audio/speech",
                 headers={
                     "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 },
                 json={
                     "model": "gpt-4o-mini-tts",
                     "input": text,
                     "voice": voice_id,
-                    "response_format": "mp3"
-                }
+                    "response_format": "mp3",
+                },
             )
             if response.status_code != 200:
-                raise RuntimeError(f"OpenAI TTS failed: {response.status_code} - {response.text}")
+                raise RuntimeError(
+                    f"OpenAI TTS failed: {response.status_code} - {response.text}"
+                )
             with open(filename, "wb") as f:
                 f.write(response.content)
 
@@ -212,10 +227,20 @@ class PodcastGenerator:
 
         else:
             raise ValueError(f"Unsupported TTS provider: {self.provider}")
-    def generate_podcast(self, source, source_type, speakers, target_length, stop_callback=None, progress_callback=None, background_music=False, manual=False):
+
+    def generate_podcast(
+        self,
+        source,
+        source_type,
+        speakers,
+        target_length,
+        stop_callback=None,
+        progress_callback=None,
+        background_music=False,
+        manual=False,
+    ):
         self.stopped_early = False
 
-        # 1. Extract content
         if source_type == "Wikipedia":
             self.log(f"Fetching Wikipedia summary for {source}...")
             content_text = self.get_wikipedia_summary(source)
@@ -235,15 +260,16 @@ class PodcastGenerator:
             self.log("📜 Using manually edited manuscript.")
         else:
             self.log("Summarizing and formatting as dialogue...")
-            dialogues = self.summarize_and_format_dialogue(content_text, speakers, target_length)
-
-
+            dialogues = self.summarize_and_format_dialogue(
+                content_text, speakers, target_length
+            )
 
         if not dialogues:
             raise RuntimeError("No dialogues detected. Check Gemini output formatting.")
 
-        # 3. Convert to speech
-        self.log(f"Generating {len(dialogues)} dialogue chunks with {self.provider.capitalize()} TTS...")
+        self.log(
+            f"Generating {len(dialogues)} dialogue chunks with {self.provider.capitalize()} TTS..."
+        )
         audio_segments = []
 
         for idx, (speaker, chunk) in enumerate(dialogues):
@@ -263,10 +289,13 @@ class PodcastGenerator:
             self.cleanup_chunks()
             return
 
-        # 4. Merge audio and optionally add background
         self.log("Combining audio segments...")
         podcast = sum(audio_segments[1:], audio_segments[0])
-        base_name = source.split("/")[-1] if source_type == "Wikipedia" else os.path.splitext(os.path.basename(source))[0]
+        base_name = (
+            source.split("/")[-1]
+            if source_type == "Wikipedia"
+            else os.path.splitext(os.path.basename(source))[0]
+        )
         timestamp = datetime.now().strftime("%d-%m_%H-%M")
         temp_path = f"podcast/{base_name}_{len(speakers)}Speakers_{timestamp}_raw.mp3"
         podcast.export(temp_path, format="mp3")
@@ -292,8 +321,8 @@ class PodcastGenerator:
         self.cleanup_chunks()
 
 
-
 JAMENDO_CLIENT_ID = os.getenv("JAMENDO_CLIENT_ID")
+
 
 def fetch_jamendo_track(tag="lofi"):
     try:
@@ -303,7 +332,7 @@ def fetch_jamendo_track(tag="lofi"):
             "format": "json",
             "limit": "1",
             "tags": tag,
-            "audioformat": "mp32"
+            "audioformat": "mp32",
         }
         response = requests.get(base_url, params=params)
         response.raise_for_status()
@@ -318,18 +347,26 @@ def fetch_jamendo_track(tag="lofi"):
 
     except Exception as e:
         print("❌ Jamendo API error:", e)
-        print("🔍 Full response:", response.status_code, response.text if 'response' in locals() else 'no response')
+        print(
+            "🔍 Full response:",
+            response.status_code,
+            response.text if "response" in locals() else "no response",
+        )
         return None, None, None
+
 
 def download_mp3(url, filename="background.mp3"):
     with requests.get(url, stream=True) as r:
         r.raise_for_status()
-        with open(filename, 'wb') as f:
+        with open(filename, "wb") as f:
             for chunk in r.iter_content(chunk_size=8192):
                 f.write(chunk)
     return filename
 
-def mix_background_music(podcast_path, output_path="podcast/final_with_bgmusic.mp3", volume_reduction_db=20):
+
+def mix_background_music(
+    podcast_path, output_path="podcast/final_with_bgmusic.mp3", volume_reduction_db=20
+):
     print("🎧 Adding Jamendo background music...")
     url, title, artist = fetch_jamendo_track("lofi")
     if not url:
@@ -341,14 +378,12 @@ def mix_background_music(podcast_path, output_path="podcast/final_with_bgmusic.m
     podcast = AudioSegment.from_mp3(podcast_path)
     bg_music = AudioSegment.from_mp3(bg_path) - volume_reduction_db
 
-    # Loop the music to match podcast length
     loops_needed = (len(podcast) // len(bg_music)) + 1
     bg_music_looped = bg_music * loops_needed
-    bg_music_looped = bg_music_looped[:len(podcast)]
+    bg_music_looped = bg_music_looped[: len(podcast)]
 
     mixed = podcast.overlay(bg_music_looped)
     mixed.export(output_path, format="mp3")
 
     print(f"✅ Background music added and saved to: {output_path}")
     print(f"🎵 Track used: {title} by {artist}")
-

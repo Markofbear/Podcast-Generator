@@ -13,16 +13,17 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QProgressBar,
     QCheckBox,
-    QHBoxLayout  
+    QHBoxLayout,
 )
 from PySide6.QtGui import QPixmap
 from PySide6.QtCore import Qt, QThread
 from features.podcast_generator import PodcastGeneratorWorker
 from dotenv import load_dotenv
 
-from features.podcast import PodcastGenerator 
-from features.manuscript_dialog import ManuscriptReviewDialog 
-from PySide6.QtWidgets import QDialog 
+from features.podcast import PodcastGenerator
+from features.manuscript_dialog import ManuscriptReviewDialog
+from PySide6.QtWidgets import QDialog
+
 
 class PodcastGeneratorUI(QWidget):
     def __init__(self):
@@ -45,7 +46,9 @@ class PodcastGeneratorUI(QWidget):
         left_layout.addWidget(logo_label)
 
         self.length_dropdown = QComboBox()
-        self.length_dropdown.addItems(["Short (5 min)", "Medium (10 min)", "Long (20 min)"])
+        self.length_dropdown.addItems(
+            ["Short (5 min)", "Medium (10 min)", "Long (20 min)"]
+        )
         left_layout.addWidget(QLabel("Select Podcast Length:"))
         left_layout.addWidget(self.length_dropdown)
 
@@ -66,9 +69,15 @@ class PodcastGeneratorUI(QWidget):
 
         self.provider_dropdown = QComboBox()
         self.provider_dropdown.addItem("pyttsx3 (Low Quality - Free)", "pyttsx3")
-        self.provider_dropdown.addItem("Google (Mid Quality - API Key Required)", "google")
-        self.provider_dropdown.addItem("ElevenLabs (High Quality - Account Required)", "elevenlabs")
-        self.provider_dropdown.addItem("OpenAI (Mid-High Quality - API Key Required)", "openai")
+        self.provider_dropdown.addItem(
+            "Google (Mid Quality - API Key Required)", "google"
+        )
+        self.provider_dropdown.addItem(
+            "ElevenLabs (High Quality - Account Required)", "elevenlabs"
+        )
+        self.provider_dropdown.addItem(
+            "OpenAI (Mid-High Quality - API Key Required)", "openai"
+        )
         left_layout.addWidget(QLabel("Select Voice:"))
         left_layout.addWidget(self.provider_dropdown)
 
@@ -140,7 +149,9 @@ class PodcastGeneratorUI(QWidget):
 
     def browse_file(self):
         file_filter = "PDF files (*.pdf);;Text files (*.txt);;All files (*.*)"
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select Source File", "", file_filter)
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select Source File", "", file_filter
+        )
         if file_path:
             self.source_input.setText(file_path)
 
@@ -184,11 +195,11 @@ class PodcastGeneratorUI(QWidget):
             self.log("❌ Unsupported source type.")
             return
 
-        # Format dialogue
-        dialogues = pg.summarize_and_format_dialogue(content_text, speakers, target_length)
+        dialogues = pg.summarize_and_format_dialogue(
+            content_text, speakers, target_length
+        )
         manus = "\n".join(f"{speaker}: {text}" for speaker, text in dialogues)
 
-        # Popup for review
         dialog = ManuscriptReviewDialog(manus)
         if dialog.exec() != QDialog.Accepted:
             with open("podcast/manual_edit.txt", "w", encoding="utf-8") as f:
@@ -212,13 +223,22 @@ class PodcastGeneratorUI(QWidget):
         background_music = self.bg_music_checkbox.isChecked()
 
         self.worker = PodcastGeneratorWorker(
-            source, source_type, provider, speakers, target_length, self.check_stop, background_music, manual=manual_mode
+            source,
+            source_type,
+            provider,
+            speakers,
+            target_length,
+            self.check_stop,
+            background_music,
+            manual=manual_mode,
         )
         self.worker.moveToThread(self.thread)
 
         self.worker.log_signal.connect(self.log)
         self.worker.progress_signal.connect(self.update_progress)
-        self.worker.stopped_signal.connect(lambda: self.log("🛑 Podcast generation stopped."))
+        self.worker.stopped_signal.connect(
+            lambda: self.log("🛑 Podcast generation stopped.")
+        )
         self.worker.finished.connect(self.on_generation_finished)
 
         self.thread.started.connect(self.worker.run)
@@ -236,7 +256,7 @@ class PodcastGeneratorUI(QWidget):
         self.worker = None
         self.log("✅ Podcast generation process finished.")
         self.refresh_podcast_list()
-        
+
     def closeEvent(self, event):
         if self.thread and self.thread.isRunning():
             self.log("Waiting for background task to finish...")
@@ -245,7 +265,9 @@ class PodcastGeneratorUI(QWidget):
         event.accept()
 
     def play_latest_podcast(self):
-        podcast_files = sorted(glob.glob("podcast/*.mp3"), key=os.path.getmtime, reverse=True)
+        podcast_files = sorted(
+            glob.glob("podcast/*.mp3"), key=os.path.getmtime, reverse=True
+        )
         if not podcast_files:
             self.log("❌ No podcast files found.")
             return
@@ -264,11 +286,7 @@ class PodcastGeneratorUI(QWidget):
 
     def refresh_podcast_list(self):
         self.podcast_list.clear()
-        files = sorted(
-            glob.glob("podcast/*.mp3"),
-            key=os.path.getmtime,
-            reverse=True
-        )
+        files = sorted(glob.glob("podcast/*.mp3"), key=os.path.getmtime, reverse=True)
         for f in files:
             self.podcast_list.addItem(os.path.basename(f))
 

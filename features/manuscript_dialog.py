@@ -1,4 +1,12 @@
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QTextEdit, QPushButton, QHBoxLayout
+from PySide6.QtWidgets import (
+    QDialog,
+    QVBoxLayout,
+    QLabel,
+    QTextEdit,
+    QPushButton,
+    QHBoxLayout,
+)
+
 
 class ManuscriptReviewDialog(QDialog):
     def __init__(self, manuscript, parent=None):
@@ -8,7 +16,9 @@ class ManuscriptReviewDialog(QDialog):
 
         layout = QVBoxLayout(self)
 
-        self.label = QLabel("📝 Review or edit the podcast manuscript below.\nClick 'Approve' to continue, or close to cancel.")
+        self.label = QLabel(
+            "📝 Review or edit the podcast manuscript below.\nClick 'Approve' to continue, or close to cancel."
+        )
         layout.addWidget(self.label)
 
         self.text_edit = QTextEdit()
