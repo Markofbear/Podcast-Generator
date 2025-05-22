@@ -37,12 +37,13 @@ class PodcastGenerator:
             "Alice": {
                 "google": "en-US-Wavenet-F",
                 "elevenlabs": "aEO01A4wXwd1O8GPgGlF",
+                "pyttsx3": "Hazel",
                 "openai": "shimmer",
             },
             "Bob": {
                 "google": "en-US-Wavenet-B",
                 "elevenlabs": "UgBBYS2sOqTuMpoF3BR0",
-                "pyttsx3": "Mark",
+                "pyttsx3": "David",
                 "openai": "onyx",
             },
         }
@@ -211,10 +212,10 @@ class PodcastGenerator:
 
         else:
             raise ValueError(f"Unsupported TTS provider: {self.provider}")
-
-    def generate_podcast(self, source, source_type, speakers, target_length, stop_callback=None, progress_callback=None, background_music=False):
+    def generate_podcast(self, source, source_type, speakers, target_length, stop_callback=None, progress_callback=None, background_music=False, manual=False):
         self.stopped_early = False
 
+        # 1. Extract content
         if source_type == "Wikipedia":
             self.log(f"Fetching Wikipedia summary for {source}...")
             content_text = self.get_wikipedia_summary(source)
@@ -227,11 +228,21 @@ class PodcastGenerator:
         else:
             raise ValueError(f"Unsupported source type: {source_type}")
 
-        self.log("Summarizing and formatting as dialogue...")
-        dialogues = self.summarize_and_format_dialogue(content_text, speakers, target_length)
+        if manual:
+            with open("podcast/manual_edit.txt", "r", encoding="utf-8") as f:
+                dialogue_text = f.read()
+            dialogues = self.create_dialogue(dialogue_text)
+            self.log("📜 Using manually edited manuscript.")
+        else:
+            self.log("Summarizing and formatting as dialogue...")
+            dialogues = self.summarize_and_format_dialogue(content_text, speakers, target_length)
+
+
+
         if not dialogues:
             raise RuntimeError("No dialogues detected. Check Gemini output formatting.")
 
+        # 3. Convert to speech
         self.log(f"Generating {len(dialogues)} dialogue chunks with {self.provider.capitalize()} TTS...")
         audio_segments = []
 
@@ -252,6 +263,7 @@ class PodcastGenerator:
             self.cleanup_chunks()
             return
 
+        # 4. Merge audio and optionally add background
         self.log("Combining audio segments...")
         podcast = sum(audio_segments[1:], audio_segments[0])
         base_name = source.split("/")[-1] if source_type == "Wikipedia" else os.path.splitext(os.path.basename(source))[0]
@@ -259,39 +271,55 @@ class PodcastGenerator:
         temp_path = f"podcast/{base_name}_{len(speakers)}Speakers_{timestamp}_raw.mp3"
         podcast.export(temp_path, format="mp3")
 
+        final_path = f"podcast/{base_name}_{len(speakers)}Speakers_{timestamp}.mp3"
+
         if background_music:
             self.log("🎧 Adding background music...")
-            final_path = f"podcast/{base_name}_{len(speakers)}Speakers_{timestamp}_bg.mp3"
-            mix_background_music(temp_path, final_path)
-            os.remove(temp_path)
-            self.log(f"✅ Final podcast with music saved: {final_path}")
+            try:
+                bg_final_path = final_path.replace(".mp3", "_bg.mp3")
+                mix_background_music(temp_path, bg_final_path)
+                os.remove(temp_path)
+                final_path = bg_final_path
+                self.log(f"✅ Final podcast with music saved: {final_path}")
+            except Exception as e:
+                self.log(f"⚠️ Failed to add background music: {e}")
+                os.rename(temp_path, final_path)
+                self.log(f"✅ Podcast saved without music: {final_path}")
         else:
-            final_path = f"podcast/{base_name}_{len(speakers)}Speakers_{timestamp}.mp3"
             os.rename(temp_path, final_path)
             self.log(f"✅ Final podcast saved: {final_path}")
 
         self.cleanup_chunks()
 
+
+
 JAMENDO_CLIENT_ID = os.getenv("JAMENDO_CLIENT_ID")
 
 def fetch_jamendo_track(tag="lofi"):
-    url = "https://api.jamendo.com/v3.0/tracks/"
-    params = {
-        "client_id": JAMENDO_CLIENT_ID,
-        "format": "json",
-        "limit": 1,
-        "fuzzytags": tag,
-        "audioformat": "mp32",
-        "license_ccurl": "true",
-        "include": "musicinfo",
-        "order": "popularity_total"
-    }
-    response = requests.get(url, params=params)
-    data = response.json()
-    if data["headers"]["status"] == "success" and data["results"]:
-        track = data["results"][0]
-        return track["audio"], track["name"], track["artist_name"]
-    return None, None, None
+    try:
+        base_url = "https://api.jamendo.com/v3.0/tracks/"
+        params = {
+            "client_id": os.getenv("JAMENDO_CLIENT_ID"),
+            "format": "json",
+            "limit": "1",
+            "tags": tag,
+            "audioformat": "mp32"
+        }
+        response = requests.get(base_url, params=params)
+        response.raise_for_status()
+
+        data = response.json()
+        if data["headers"]["results_count"] > 0:
+            track = data["results"][0]
+            return track["audio"], track["name"], track["artist_name"]
+        else:
+            print("⚠️ No tracks found for tag:", tag)
+            return None, None, None
+
+    except Exception as e:
+        print("❌ Jamendo API error:", e)
+        print("🔍 Full response:", response.status_code, response.text if 'response' in locals() else 'no response')
+        return None, None, None
 
 def download_mp3(url, filename="background.mp3"):
     with requests.get(url, stream=True) as r:

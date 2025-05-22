@@ -10,6 +10,7 @@ A desktop application that transforms Wikipedia articles, PDFs, or plain text in
 - Convert Wikipedia, PDF, or TXT content into podcast audio
 - AI-generated dialogue with speaker variation using Gemini
 - Multispeaker support: Bonnie, Clyde, Alice, and Bob
+- Background music
 - Text-to-Speech providers:
   - Google Cloud Text-to-Speech
   - ElevenLabs API
@@ -28,11 +29,15 @@ A desktop application that transforms Wikipedia articles, PDFs, or plain text in
 - Python 3.8+
 - FFmpeg installed and added to system PATH
   - [Download FFmpeg](https://ffmpeg.org/download.html)
-- API Keys:
+- Needed:
   - [Google Gemini API](https://makersuite.google.com/app/apikey)
-  - [Google Cloud TTS](https://cloud.google.com/text-to-speech/docs/quickstart-client-libraries)
+
+- API Voice Keys:
+  - [Google Cloud TTS](https://developers.google.com/workspace/guides/create-credentials)
   - [ElevenLabs API](https://www.elevenlabs.io/api)
   - [OpenAI API](https://platform.openai.com/account/api-keys)
+  Music:
+  - [JAMENDO]
 
 ---
 
@@ -53,6 +58,7 @@ GOOGLE_API_KEY=your-gemini-api-key
 GOOGLE_APPLICATION_CREDENTIALS=./gcp-credentials.json
 ELEVENLABS_API_KEY=your-elevenlabs-api-key
 OPENAI_API_KEY=your-openai-api-key
+JAMENDO_CLIENT_ID = XXX-XXX-XXX
 
 These are used only when selecting Google, ElevenLabs, or OpenAI as voice providers.
 

@@ -20,6 +20,10 @@ from PySide6.QtCore import Qt, QThread
 from features.podcast_generator import PodcastGeneratorWorker
 from dotenv import load_dotenv
 
+from features.podcast import PodcastGenerator 
+from features.manuscript_dialog import ManuscriptReviewDialog 
+from PySide6.QtWidgets import QDialog 
+
 class PodcastGeneratorUI(QWidget):
     def __init__(self):
         super().__init__()
@@ -169,6 +173,33 @@ class PodcastGeneratorUI(QWidget):
         if len(speakers) < 2:
             self.log("❌ Please select at least two speakers.")
             return
+        pg = PodcastGenerator(provider, log_func=self.log)
+        if source_type == "Wikipedia":
+            content_text = pg.get_wikipedia_summary(source)
+        elif source_type == "PDF":
+            content_text = pg.extract_text_from_pdf(source)
+        elif source_type == "TXT":
+            content_text = pg.extract_text_from_txt(source)
+        else:
+            self.log("❌ Unsupported source type.")
+            return
+
+        # Format dialogue
+        dialogues = pg.summarize_and_format_dialogue(content_text, speakers, target_length)
+        manus = "\n".join(f"{speaker}: {text}" for speaker, text in dialogues)
+
+        # Popup for review
+        dialog = ManuscriptReviewDialog(manus)
+        if dialog.exec() != QDialog.Accepted:
+            with open("podcast/manual_edit.txt", "w", encoding="utf-8") as f:
+                f.write(manus)
+            self.log("📝 Script saved. You can rerun with manual=True to use it.")
+            return
+
+        final_script = dialog.get_text()
+        with open("podcast/manual_edit.txt", "w", encoding="utf-8") as f:
+            f.write(final_script)
+        manual_mode = True
 
         self.stop_requested = False
         self.stop_button.setEnabled(True)
@@ -181,7 +212,7 @@ class PodcastGeneratorUI(QWidget):
         background_music = self.bg_music_checkbox.isChecked()
 
         self.worker = PodcastGeneratorWorker(
-            source, source_type, provider, speakers, target_length, self.check_stop, background_music
+            source, source_type, provider, speakers, target_length, self.check_stop, background_music, manual=manual_mode
         )
         self.worker.moveToThread(self.thread)
 
