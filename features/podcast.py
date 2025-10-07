@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 import google.generativeai as genai
 from google.cloud import texttospeech
 from elevenlabs.client import ElevenLabs
-
+from youtube_transcript_api import YouTubeTranscriptApi
 
 class PodcastGenerator:
     def __init__(self, provider="pyttsx3", log_func=print):
@@ -80,6 +80,32 @@ class PodcastGenerator:
     def extract_text_from_txt(self, path):
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
+
+    def extract_youtube_transcript(self, url, save_path="podcast/youtube_transcript.txt"):
+        import re
+        from youtube_transcript_api.formatters import TextFormatter
+
+        match = re.search(r"(?:v=|youtu\.be/)([\w-]{11})", url)
+        if not match:
+            raise ValueError(f"Invalid YouTube URL: {url}")
+        video_id = match.group(1)
+
+        try:
+            transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+            formatter = TextFormatter()
+            transcript_text = formatter.format_transcript(transcript_list)
+
+            with open(save_path, "w", encoding="utf-8") as f:
+                f.write(transcript_text)
+
+            self.log(f"✅ YouTube transcript saved to {save_path}")
+            return transcript_text
+
+        except Exception as e:
+            self.log(f"❌ Failed to fetch YouTube transcript: {e}")
+            raise
+      
+        
 
     def summarize_and_format_dialogue(self, text, speakers, target_length):
         word_count_map = {
@@ -250,8 +276,12 @@ class PodcastGenerator:
         elif source_type == "TXT":
             self.log(f"Extracting text from TXT file: {source}...")
             content_text = self.extract_text_from_txt(source)
+        elif source_type == "YouTube":
+            self.log(f"Fetching YouTube transcript for {source}...")
+            content_text = self.extract_youtube_transcript(source)
         else:
             raise ValueError(f"Unsupported source type: {source_type}")
+
 
         if manual:
             with open("podcast/manual_edit.txt", "r", encoding="utf-8") as f:

@@ -53,7 +53,7 @@ class PodcastGeneratorUI(QWidget):
         left_layout.addWidget(self.length_dropdown)
 
         self.source_type_dropdown = QComboBox()
-        self.source_type_dropdown.addItems(["Wikipedia", "PDF", "TXT"])
+        self.source_type_dropdown.addItems(["Wikipedia", "PDF", "TXT", "YouTube"])
         self.source_type_dropdown.currentIndexChanged.connect(self.toggle_source_input)
         left_layout.addWidget(QLabel("Select Source Type:"))
         left_layout.addWidget(self.source_type_dropdown)
@@ -137,11 +137,15 @@ class PodcastGeneratorUI(QWidget):
 
     def toggle_source_input(self, index):
         source_type = self.source_type_dropdown.currentText()
-        if source_type == "Wikipedia":
+        if source_type in ["Wikipedia", "YouTube"]:
             self.browse_button.setVisible(False)
             self.source_input.setEnabled(True)
-            self.source_input.setPlaceholderText("Enter Wikipedia URL")
-        else:
+            placeholder = (
+                "Enter Wikipedia URL" if source_type == "Wikipedia" else "Enter YouTube URL"
+            )
+            self.source_input.setPlaceholderText(placeholder)
+            self.source_input.clear()
+        else:  # PDF or TXT
             self.browse_button.setVisible(True)
             self.source_input.setEnabled(False)
             self.source_input.setPlaceholderText("Selected file will appear here")
@@ -178,21 +182,25 @@ class PodcastGeneratorUI(QWidget):
         speakers = [item.text() for item in self.speaker_list.selectedItems()]
         target_length = self.length_dropdown.currentText()
 
-        if not source:
-            self.log("❌ Please enter a valid source.")
-            return
-        if len(speakers) < 2:
-            self.log("❌ Please select at least two speakers.")
-            return
         pg = PodcastGenerator(provider, log_func=self.log)
+
         if source_type == "Wikipedia":
             content_text = pg.get_wikipedia_summary(source)
         elif source_type == "PDF":
             content_text = pg.extract_text_from_pdf(source)
         elif source_type == "TXT":
             content_text = pg.extract_text_from_txt(source)
+        elif source_type == "YouTube":
+            content_text = pg.extract_youtube_transcript(source)
         else:
             self.log("❌ Unsupported source type.")
+            return
+
+        if not source:
+            self.log("❌ Please enter a valid source.")
+            return
+        if len(speakers) < 2:
+            self.log("❌ Please select at least two speakers.")
             return
 
         dialogues = pg.summarize_and_format_dialogue(
