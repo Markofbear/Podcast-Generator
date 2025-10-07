@@ -12,6 +12,8 @@ import google.generativeai as genai
 from google.cloud import texttospeech
 from elevenlabs.client import ElevenLabs
 from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api.formatters import TextFormatter
+import re
 
 class PodcastGenerator:
     def __init__(self, provider="pyttsx3", log_func=print):
@@ -81,28 +83,32 @@ class PodcastGenerator:
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
 
-    def extract_youtube_transcript(self, url, save_path="podcast/youtube_transcript.txt"):
-        import re
-        from youtube_transcript_api.formatters import TextFormatter
 
+
+    def extract_youtube_transcript(self, url, save_path="podcast/youtube_transcript.txt"):
+        # Extract video ID
         match = re.search(r"(?:v=|youtu\.be/)([\w-]{11})", url)
         if not match:
             raise ValueError(f"Invalid YouTube URL: {url}")
         video_id = match.group(1)
 
         try:
-            transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+            # fetch transcript (returns list of dicts with 'text', 'start', 'duration')
+            transcript_list = YouTubeTranscriptApi().fetch(video_id)
+
+            # format to plain text
             formatter = TextFormatter()
             transcript_text = formatter.format_transcript(transcript_list)
 
+            # save to file
             with open(save_path, "w", encoding="utf-8") as f:
                 f.write(transcript_text)
 
-            self.log(f"✅ YouTube transcript saved to {save_path}")
+            print(f"✅ YouTube transcript saved to {save_path}")
             return transcript_text
 
         except Exception as e:
-            self.log(f"❌ Failed to fetch YouTube transcript: {e}")
+            print(f"❌ Failed to fetch YouTube transcript: {e}")
             raise
       
         
