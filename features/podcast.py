@@ -409,7 +409,7 @@ def mix_background_music(
         print("❌ Failed to fetch Jamendo track.")
         return
 
-    bg_path = download_mp3(url, "bgmusic.mp3")
+    bg_path = download_mp3(url, "podcast/bgmusic.mp3")
 
     podcast = AudioSegment.from_mp3(podcast_path)
     bg_music = AudioSegment.from_mp3(bg_path) - volume_reduction_db
