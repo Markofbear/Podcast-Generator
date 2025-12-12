@@ -128,7 +128,6 @@ class PodcastGeneratorUI(QWidget):
         left_layout.addWidget(QLabel("Select Manuscript Creator:"))
         left_layout.addWidget(self.manuscript_dropdown)
 
-    # --- Core Methods ---
     def log(self, message):
         self.log_output.append(message)
         QApplication.processEvents()
@@ -236,7 +235,7 @@ class PodcastGeneratorUI(QWidget):
             self.check_stop,
             background_music,
             manual=manual_mode,
-            manuscript_creator=manuscript_creator,  # ensures Gemini/OpenAI selection
+            manuscript_creator=manuscript_creator,
         )
         self.worker.moveToThread(self.thread)
 
@@ -249,7 +248,6 @@ class PodcastGeneratorUI(QWidget):
         self.thread.finished.connect(self.thread.deleteLater)
         self.thread.start()
 
-    # --- Finishing / UI ---
     def on_generation_finished(self):
         self.stop_button.setEnabled(False)
         self.progress_bar.setVisible(False)

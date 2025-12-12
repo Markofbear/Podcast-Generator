@@ -43,7 +43,6 @@ class PodcastGenerator:
         if not openai.api_key:
             raise RuntimeError("OPENAI_API_KEY not set in environment")
 
-    # ------------------- Dialogue Summarization -------------------
     def summarize_and_format_dialogue(self, text, speakers, target_length):
         if not text.strip():
             raise RuntimeError("Input text is empty. Cannot generate dialogues.")
@@ -67,7 +66,7 @@ Article:
 {text}
 """
 
-        # Generate dialogue using selected manuscript creator
+       
         if self.manuscript_creator == "OpenAI GPT-4":
             resp = openai.ChatCompletion.create(
                 model="gpt-4o-mini",
@@ -96,7 +95,6 @@ Article:
 
         return dialogues
 
-    # ------------------- Dialogue Parsing -------------------
     def create_dialogue(self, dialogue_text):
         lines = dialogue_text.strip().split("\n")
         dialogues = []
@@ -117,7 +115,6 @@ Article:
             raise RuntimeError("Parsed dialogue is empty after processing.")
         return dialogues
 
-    # ------------------- Helper Functions -------------------
     def cleanup_chunks(self):
         for f in glob.glob("podcast/chunks/*.mp3"):
             try:
@@ -159,7 +156,6 @@ Article:
     def hf_generate(self, prompt):
         raise NotImplementedError("Hugging Face generation not implemented.")
 
-    # ------------------- Text-to-Speech -------------------
     def text_to_speech(self, text, speaker_name, filename):
         if self.provider == "google":
             voice_id = self.voice_map[speaker_name]["google"]
@@ -211,7 +207,6 @@ Article:
             raise ValueError(f"Unsupported TTS provider: {self.provider}")
 
 
-# ------------------- Background Music Functions -------------------
 def fetch_jamendo_track(tag="lofi"):
     try:
         base_url = "https://api.jamendo.com/v3.0/tracks/"
