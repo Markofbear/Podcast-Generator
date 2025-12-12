@@ -14,6 +14,8 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api.formatters import TextFormatter
 import re
 import openai
+import pathlib
+
 
 load_dotenv()
 
@@ -270,12 +272,26 @@ Article:
             if progress_callback:
                 progress_callback(i, total)
 
-        # Combine chunks
         combined = AudioSegment.empty()
         for f in glob.glob("podcast/chunks/*.mp3"):
             combined += AudioSegment.from_mp3(f)
-        output_path = "podcast/final.mp3"
+        from urllib.parse import unquote
+
+        if source_type in ["PDF", "TXT"]:
+            base_name = pathlib.Path(source).stem
+        elif source_type == "Wikipedia":
+            base_name = unquote(source.split("/")[-1])
+        elif source_type == "YouTube":
+            base_name = source.split("v=")[-1] if "v=" in source else source.split("/")[-1]
+        else:
+            base_name = "final"
+
+        output_path = f"podcast/{base_name}.mp3"
         combined.export(output_path, format="mp3")
+
+        if background_music:
+            self.mix_background_music(output_path, output_path=f"podcast/{base_name}_with_bgmusic.mp3")
+
 
         if background_music:
             self.mix_background_music(output_path)
