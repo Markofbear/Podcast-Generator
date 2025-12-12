@@ -29,11 +29,12 @@ class PodcastGenerator:
         os.makedirs("podcast", exist_ok=True)
 
         self.voice_map = {
-            "Bonnie": {"google": "en-US-Wavenet-C", "elevenlabs": "lxYfHSkYm1EzQzGhdbfc", "pyttsx3": "Zira", "openai": "nova"},
-            "Clyde": {"google": "en-US-Wavenet-D", "elevenlabs": "pVnrL6sighQX7hVz89cp", "pyttsx3": "David", "openai": "fable"},
-            "Alice": {"google": "en-US-Wavenet-F", "elevenlabs": "aEO01A4wXwd1O8GPgGlF", "pyttsx3": "Hazel", "openai": "shimmer"},
-            "Bob": {"google": "en-US-Wavenet-B", "elevenlabs": "UgBBYS2sOqTuMpoF3BR0", "pyttsx3": "David", "openai": "onyx"},
+            "Bonnie": {"google": "en-US-Wavenet-C", "elevenlabs": "lxYfHSkYm1EzQzGhdbfc", "pyttsx3": "Zira", "openai": "alloy"},
+            "Clyde":  {"google": "en-US-Wavenet-D", "elevenlabs": "pVnrL6sighQX7hVz89cp", "pyttsx3": "David", "openai": "ballad"},
+            "Alice":  {"google": "en-US-Wavenet-F", "elevenlabs": "aEO01A4wXwd1O8GPgGlF", "pyttsx3": "Hazel", "openai": "verse"},
+            "Bob":    {"google": "en-US-Wavenet-B", "elevenlabs": "UgBBYS2sOqTuMpoF3BR0", "pyttsx3": "David", "openai": "coral"},
         }
+
 
         self.gcp_client = texttospeech.TextToSpeechClient() if provider == "google" else None
         self.eleven_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY")) if provider == "elevenlabs" else None
@@ -54,6 +55,8 @@ class PodcastGenerator:
         speaker_list = ", ".join(speakers)
         base_prompt = f"""
     Convert the following document into a detailed dialogue between {speaker_list}.
+    -Should ALWAYS start with an introduction about the subject and summarize it shortly, naturally flowing into the main content.
+    - Use a conversational tone with natural interactions.
     - Cover all sections, topics, and concepts in the document
     - Explain everything as if onboarding a new person
     - Natural back-and-forth conversation with questions, clarifications, and explanations
@@ -194,13 +197,27 @@ class PodcastGenerator:
         else:
             raise ValueError(f"Unsupported TTS provider: {self.provider}")
 
+    def download_mp3(self, url, filename="background.mp3"):
+        with requests.get(url, stream=True) as r:
+            r.raise_for_status()
+            with open(filename, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
+        return filename
+
     def mix_background_music(self, podcast_path, output_path=None, volume_reduction_db=20, background_music=True):
         if not background_music:
-            return 
+            return
 
-        url, title, artist = self.fetch_jamendo_track("lofi")
+        tags_to_try = ["lofi", "chill", "instrumental"]
+        url, title, artist = None, None, None
+        for tag in tags_to_try:
+            url, title, artist = self.fetch_jamendo_track(tag)
+            if url:
+                break
+
         if not url:
-            self.log("❌ No background track found.")
+            self.log("❌ No background track found for any tag.")
             return
 
         bg_path = self.download_mp3(url, "podcast/bgmusic.mp3")
@@ -221,6 +238,7 @@ class PodcastGenerator:
         self.log(f"✅ Podcast with background music saved to {output_path}")
 
 
+
     def fetch_jamendo_track(self, tag="lofi"):
         try:
             base_url = "https://api.jamendo.com/v3.0/tracks/"
@@ -229,26 +247,20 @@ class PodcastGenerator:
                 "format": "json",
                 "limit": "1",
                 "tags": tag,
-                "audioformat": "mp3",
+                "audioformat": "mp32",
             }
             response = requests.get(base_url, params=params)
             response.raise_for_status()
             data = response.json()
+            self.log(f"DEBUG Jamendo API data: {data}")
             if data["headers"]["results_count"] > 0:
                 track = data["results"][0]
-                return track["audio"], track["name"], track["artist_name"]
+                return track.get("audio"), track.get("name"), track.get("artist_name")
             return None, None, None
         except Exception as e:
             self.log(f"❌ Jamendo API error: {e}")
             return None, None, None
 
-    def download_mp3(self, url, filename="background.mp3"):
-        with requests.get(url, stream=True) as r:
-            r.raise_for_status()
-            with open(filename, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
-        return filename
 
     def generate_podcast(
         self,

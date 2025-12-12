@@ -50,6 +50,11 @@ class PodcastGeneratorUI(QWidget):
         left_layout.addWidget(QLabel("Select Podcast Length:"))
         left_layout.addWidget(self.length_dropdown)
 
+        self.manuscript_dropdown = QComboBox()
+        self.manuscript_dropdown.addItems(["OpenAI", "Hugging Face (Free)", "Gemini 2.0"])
+        left_layout.addWidget(QLabel("Select Manuscript Creator:"))
+        left_layout.addWidget(self.manuscript_dropdown)
+
         self.source_type_dropdown = QComboBox()
         self.source_type_dropdown.addItems(["Wikipedia", "PDF", "TXT", "YouTube"])
         self.source_type_dropdown.currentIndexChanged.connect(self.toggle_source_input)
@@ -123,10 +128,6 @@ class PodcastGeneratorUI(QWidget):
 
         self.toggle_source_input(0)
 
-        self.manuscript_dropdown = QComboBox()
-        self.manuscript_dropdown.addItems(["OpenAI GPT-4", "Hugging Face (Free)", "Gemini 2.0"])
-        left_layout.addWidget(QLabel("Select Manuscript Creator:"))
-        left_layout.addWidget(self.manuscript_dropdown)
 
     def log(self, message):
         self.log_output.append(message)
