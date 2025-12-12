@@ -60,19 +60,29 @@ class PodcastGenerator:
         speaker_list = ", ".join(speakers)
 
         base_prompt = f"""
-You are creating an engaging dialogue script for a podcast that will give important information for onbording based on the text input. 
-The dialogue is between {speaker_list}. 
-The purpose is to clearly convey all important and relevant information from the source document, suitable for someone onboarding or learning the topic. 
-IMPORTANT: Only use these speaker names: Bonnie, Clyde, Alice, Bob.
-Do NOT include section headers, titles, or extra text.
-Every line must start with a valid speaker.
+You are tasked with creating an engaging, informative dialogue script for a podcast. 
+The dialogue is strictly between {speaker_list}, which are: Bonnie, Clyde, Alice, and Bob.
+Do NOT introduce any other speakers, section headers, titles, or extra text.
+
+Your goal is to clearly and fully convey all relevant information from the source document {text}, 
+ensuring that someone reading or listening can learn everything important for onboarding or understanding the topic.
 
 Requirements:
-- Target AT LEAST {target_words} words.
-- Begin with a clear introduction to the topic.
-- Maintain natural, conversational dialogue.
-- Each line must be prefixed with the speaker's name like: SpeakerName: line
-- Include only relevant details; skip irrelevant fluff.
+- Each line must start with a valid speaker: "SpeakerName: dialogue line"
+- Target AT LEAST {target_words} words. If necessary, expand explanations, examples, and dialogue naturally to reach this word count.
+- Include ALL relevant points from the source document; do not omit any critical information.
+- Keep the dialogue natural and conversational, like a discussion between colleagues.
+- Avoid fluff, repetition, or unrelated content.
+- Ensure the dialogue flows logically from introduction to conclusion, covering all topics in the source.
+
+Output example:
+Bonnie: Starts the discussion naturally.
+Clyde: Adds context or elaborates.
+Alice: Explains or clarifies details.
+Bob: Summarizes or provides examples.
+
+Use this structure for the entire dialogue. Every important detail from the source must be included, and the output must be at least {target_words} words long.
+
 
 Source Document:
 {text}
