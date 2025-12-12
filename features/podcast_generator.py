@@ -18,6 +18,7 @@ class PodcastGeneratorWorker(QObject):
         stop_callback,
         background_music,
         manual=False,
+        manuscript_creator="OpenAI", 
     ):
         super().__init__()
         self.source = source
@@ -28,6 +29,7 @@ class PodcastGeneratorWorker(QObject):
         self.stop_callback = stop_callback
         self.background_music = background_music
         self.manual = manual
+        self.manuscript_creator = manuscript_creator 
 
     def log(self, message):
         self.log_signal.emit(message)
@@ -37,7 +39,11 @@ class PodcastGeneratorWorker(QObject):
 
     def run(self):
         try:
-            generator = PodcastGenerator(provider=self.provider, log_func=self.log)
+            generator = PodcastGenerator(
+                provider=self.provider,
+                log_func=self.log,
+                manuscript_creator=self.manuscript_creator,
+            )
             generator.generate_podcast(
                 self.source,
                 self.source_type,
