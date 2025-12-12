@@ -44,25 +44,24 @@ class PodcastGenerator:
 
     def summarize_and_format_dialogue(self, text, speakers, target_length):
         if not text.strip():
-            raise RuntimeError("Input text is empty. Cannot generate dialogues.")
+            raise RuntimeError("Input text is empty.")
 
-        word_count_map = {
-            "Short (5 min)": 700,
-            "Medium (10 min)": 1500,
-            "Long (20 min)": 3000,
-        }
-        target_words = word_count_map.get(target_length, 1000)
+        length_key = target_length.split()[0] 
+        text_word_count = len(text.split())
+        scaling_factor = {"Short": 1.0, "Medium": 2.0, "Long": 4.0}
+        target_words = int(text_word_count * scaling_factor.get(length_key, 2.0))
+
         speaker_list = ", ".join(speakers)
-
         base_prompt = f"""
-Convert the following article into a detailed, engaging dialogue between {speaker_list}.
-- Target ~{target_words} words
-- Natural back-and-forth conversation
-- Include questions, clarifications, and debates
-- Output only in format: SpeakerName: line
+    Convert the following document into a detailed dialogue between {speaker_list}.
+    - Cover all sections, topics, and concepts in the document
+    - Explain everything as if onboarding a new person
+    - Natural back-and-forth conversation with questions, clarifications, and explanations
+    - Target ~{target_words} words
+    - Output format: SpeakerName: line
 
-Article:
-{text}
+    Document:
+    {text}
 """
 
         dialogue_text = ""
