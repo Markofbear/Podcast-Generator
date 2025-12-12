@@ -16,7 +16,6 @@ import re
 import openai
 import pathlib
 
-
 load_dotenv()
 
 class PodcastGenerator:
@@ -35,67 +34,55 @@ class PodcastGenerator:
             "Bob":    {"google": "en-US-Wavenet-B", "elevenlabs": "UgBBYS2sOqTuMpoF3BR0", "pyttsx3": "David", "openai": "coral"},
         }
 
-
         self.gcp_client = texttospeech.TextToSpeechClient() if provider == "google" else None
         self.eleven_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY")) if provider == "elevenlabs" else None
         genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
         openai.api_key = os.getenv("OPENAI_API_KEY")
         if not openai.api_key and manuscript_creator.startswith("OpenAI"):
-            raise RuntimeError("OPENAI_API_KEY not set in environment")
+            raise RuntimeError("OPENAI_API_KEY missing")
 
     def summarize_and_format_dialogue(self, text, speakers, target_length):
         if not text.strip():
-            raise RuntimeError("Input text is empty.")
+            raise RuntimeError("Empty text")
 
-        length_key = target_length.split()[0] 
-        text_word_count = len(text.split())
-        scaling_factor = {"Short": 1.0, "Medium": 2.0, "Long": 4.0}
-        target_words = int(text_word_count * scaling_factor.get(length_key, 2.0))
+        length_map = {"Short": 500, "Medium": 1500, "Long": 3000}
+        target_words = length_map.get(target_length.split()[0], 1500)
 
         speaker_list = ", ".join(speakers)
+
         base_prompt = f"""
-    Convert the following document into a detailed dialogue between {speaker_list}.
-    -Should ALWAYS start with an introduction about the subject and summarize it shortly, naturally flowing into the main content.
-    - Use a conversational tone with natural interactions.
-    - Cover all sections, topics, and concepts in the document
-    - Explain everything as if onboarding a new person
-    - Natural back-and-forth conversation with questions, clarifications, and explanations
-    - Target ~{target_words} words
-    - Output format: SpeakerName: line
+    You are creating an engaging dialogue script for a podcast. 
+    The dialogue is between {speaker_list}. 
+    The purpose is to clearly convey all **important and relevant information** from the source document, suitable for someone onboarding or learning the topic. 
 
-    Document:
+    Requirements:
+    - Target approximately {target_words} words.
+    - Begin with a clear introduction to the topic.
+    - Maintain natural, conversational dialogue.
+    - Each line must be prefixed with the speaker's name like: SpeakerName: line
+    - Include only relevant details; skip irrelevant fluff.
+
+    Source Document:
     {text}
-"""
+    """
 
-        dialogue_text = ""
 
         if self.manuscript_creator.startswith("OpenAI"):
             resp = openai.chat.completions.create(
                 model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant."},
-                    {"role": "user", "content": base_prompt},
-                ],
+                messages=[{"role": "user", "content": base_prompt}],
                 temperature=0.7,
             )
             dialogue_text = resp.choices[0].message.content
-
         elif self.manuscript_creator == "Gemini 2.0":
             model = genai.GenerativeModel("gemini-2.0-flash")
-            response = model.generate_content(base_prompt)
-            dialogue_text = response.text
-
+            dialogue_text = model.generate_content(base_prompt).text
         elif self.manuscript_creator.startswith("Hugging Face"):
             dialogue_text = self.hf_generate(base_prompt)
-
         else:
-            raise ValueError(f"Unknown manuscript creator: {self.manuscript_creator}")
+            raise RuntimeError("Invalid manuscript creator")
 
-        dialogues = self.create_dialogue(dialogue_text)
-        if not dialogues:
-            raise RuntimeError(f"{self.manuscript_creator} returned no dialogues.")
-
-        return dialogues
+        return self.create_dialogue(dialogue_text)
 
     def create_dialogue(self, dialogue_text):
         lines = dialogue_text.strip().split("\n")
@@ -106,28 +93,26 @@ class PodcastGenerator:
             speaker, text = line.split(":", 1)
             speaker = speaker.strip().replace("*", "").replace("**", "").strip()
             text = text.strip()
-            if not speaker or not text:
-                continue
             if speaker not in self.voice_map:
-                raise RuntimeError(f"Unknown speaker in dialogue: {speaker}")
+                raise RuntimeError(f"Unknown speaker: {speaker}")
             dialogues.append((speaker, text))
         if not dialogues:
-            raise RuntimeError("Parsed dialogue is empty after processing.")
+            raise RuntimeError("Empty parsed dialogue")
         return dialogues
 
     def cleanup_chunks(self):
         for f in glob.glob("podcast/chunks/*.mp3"):
             try:
                 os.remove(f)
-            except Exception as e:
-                self.log(f"❌ Failed to delete {f}: {e}")
+            except:
+                pass
 
     def get_wikipedia_summary(self, url):
-        page_title = unquote(url.split("/")[-1])
-        wiki = wikipediaapi.Wikipedia(language="en", user_agent="AI-Podcast-Generator")
-        page = wiki.page(page_title)
+        title = unquote(url.split("/")[-1])
+        wiki = wikipediaapi.Wikipedia(language="en", user_agent="AI-Podcast")
+        page = wiki.page(title)
         if not page.exists():
-            raise ValueError(f"Page '{page_title}' does not exist.")
+            raise RuntimeError("Wikipedia page missing")
         return page.summary
 
     def extract_text_from_pdf(self, path):
@@ -137,111 +122,70 @@ class PodcastGenerator:
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
 
-    def extract_youtube_transcript(self, url, save_path="podcast/youtube_transcript.txt"):
-        match = re.search(r"(?:v=|youtu\.be/)([\w-]{11})", url)
-        if not match:
-            raise ValueError(f"Invalid YouTube URL: {url}")
-        video_id = match.group(1)
-        transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+    def extract_youtube_transcript(self, url):
+        m = re.search(r"(?:v=|youtu\.be/)([\w-]{11})", url)
+        if not m:
+            raise ValueError("Invalid YouTube URL")
+        video_id = m.group(1)
+        transcript = YouTubeTranscriptApi.get_transcript(video_id)
         formatter = TextFormatter()
-        transcript_text = formatter.format_transcript(transcript_list)
-        with open(save_path, "w", encoding="utf-8") as f:
-            f.write(transcript_text)
-        self.log(f"✅ YouTube transcript saved to {save_path}")
-        return transcript_text
+        return formatter.format_transcript(transcript)
 
     def hf_generate(self, prompt):
-        raise NotImplementedError("Hugging Face generation not implemented.")
+        raise NotImplementedError()
 
     def text_to_speech(self, text, speaker_name, filename):
         if self.provider == "google":
             voice_id = self.voice_map[speaker_name]["google"]
-            input_text = texttospeech.SynthesisInput(text=text)
+            inp = texttospeech.SynthesisInput(text=text)
             voice = texttospeech.VoiceSelectionParams(language_code="en-US", name=voice_id)
             config = texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.MP3)
-            response = self.gcp_client.synthesize_speech(input_text, voice, config)
+            audio = self.gcp_client.synthesize_speech(inp, voice, config)
             with open(filename, "wb") as f:
-                f.write(response.audio_content)
+                f.write(audio.audio_content)
         elif self.provider == "elevenlabs":
             voice_id = self.voice_map[speaker_name]["elevenlabs"]
-            chunks = self.eleven_client.text_to_speech.convert(text=text, voice_id=voice_id, model_id="eleven_multilingual_v2")
+            stream = self.eleven_client.text_to_speech.convert(text=text, voice_id=voice_id, model_id="eleven_multilingual_v2")
             with open(filename, "wb") as f:
-                for chunk in chunks:
+                for chunk in stream:
                     f.write(chunk)
         elif self.provider == "openai":
             voice_id = self.voice_map[speaker_name]["openai"]
-            api_key = os.getenv("OPENAI_API_KEY")
-            if not api_key:
-                raise RuntimeError("OPENAI_API_KEY not set.")
-            response = requests.post(
+            r = requests.post(
                 "https://api.openai.com/v1/audio/speech",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                headers={"Authorization": f"Bearer {openai.api_key}", "Content-Type": "application/json"},
                 json={"model": "gpt-4o-mini-tts", "input": text, "voice": voice_id, "response_format": "mp3"},
             )
-            if response.status_code != 200:
-                raise RuntimeError(f"OpenAI TTS failed: {response.status_code} - {response.text}")
+            if r.status_code != 200:
+                raise RuntimeError("OpenAI TTS error")
             with open(filename, "wb") as f:
-                f.write(response.content)
+                f.write(r.content)
         elif self.provider == "pyttsx3":
             engine = pyttsx3.init()
             voices = engine.getProperty("voices")
             target = self.voice_map[speaker_name]["pyttsx3"].lower()
-            voice = next((v for v in voices if target in v.name.lower()), None)
-            if voice:
-                engine.setProperty("voice", voice.id)
-            temp_wav = filename.replace(".mp3", ".wav")
-            engine.save_to_file(text, temp_wav)
+            v = next((x for x in voices if target in x.name.lower()), None)
+            if v:
+                engine.setProperty("voice", v.id)
+            wav = filename.replace(".mp3", ".wav")
+            engine.save_to_file(text, wav)
             engine.runAndWait()
-            AudioSegment.from_wav(temp_wav).export(filename, format="mp3")
-            os.remove(temp_wav)
+            AudioSegment.from_wav(wav).export(filename, format="mp3")
+            os.remove(wav)
         else:
-            raise ValueError(f"Unsupported TTS provider: {self.provider}")
+            raise RuntimeError("Invalid provider")
 
-    def download_mp3(self, url, filename="background.mp3"):
+    def download_mp3(self, url, filename):
         with requests.get(url, stream=True) as r:
             r.raise_for_status()
             with open(filename, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
+                for chunk in r.iter_content(8192):
                     f.write(chunk)
         return filename
 
-    def mix_background_music(self, podcast_path, output_path=None, volume_reduction_db=20, background_music=True):
-        if not background_music:
-            return
-
-        tags_to_try = ["lofi", "chill", "instrumental"]
-        url, title, artist = None, None, None
-        for tag in tags_to_try:
-            url, title, artist = self.fetch_jamendo_track(tag)
-            if url:
-                break
-
-        if not url:
-            self.log("❌ No background track found for any tag.")
-            return
-
-        bg_path = self.download_mp3(url, "podcast/bgmusic.mp3")
-        podcast = AudioSegment.from_mp3(podcast_path)
-        bg_music = AudioSegment.from_mp3(bg_path) - volume_reduction_db
-
-        loops_needed = (len(podcast) // len(bg_music)) + 1
-        bg_music_looped = bg_music * loops_needed
-        bg_music_looped = bg_music_looped[:len(podcast)]
-
-        mixed = podcast.overlay(bg_music_looped)
-
-        if output_path is None:
-            output_path = podcast_path.replace(".mp3", "_with_bgmusic.mp3")
-
-        mixed.export(output_path, format="mp3")
-        os.remove(bg_path)
-        self.log(f"✅ Podcast with background music saved to {output_path}")
-
-
-
-    def fetch_jamendo_track(self, tag="lofi"):
+    def fetch_jamendo_track(self, tag):
         try:
-            base_url = "https://api.jamendo.com/v3.0/tracks/"
+            base = "https://api.jamendo.com/v3.0/tracks/"
             params = {
                 "client_id": os.getenv("JAMENDO_CLIENT_ID"),
                 "format": "json",
@@ -249,18 +193,38 @@ class PodcastGenerator:
                 "tags": tag,
                 "audioformat": "mp32",
             }
-            response = requests.get(base_url, params=params)
-            response.raise_for_status()
-            data = response.json()
-            self.log(f"DEBUG Jamendo API data: {data}")
+            r = requests.get(base, params=params)
+            r.raise_for_status()
+            data = r.json()
             if data["headers"]["results_count"] > 0:
-                track = data["results"][0]
-                return track.get("audio"), track.get("name"), track.get("artist_name")
-            return None, None, None
-        except Exception as e:
-            self.log(f"❌ Jamendo API error: {e}")
-            return None, None, None
+                t = data["results"][0]
+                return t.get("audio")
+            return None
+        except:
+            return None
 
+    def mix_background_music(self, podcast_path, background_music=True, volume_reduction_db=20):
+        if not background_music:
+            return
+
+        url = None
+        for tag in ["lofi", "chill", "instrumental"]:
+            url = self.fetch_jamendo_track(tag)
+            if url:
+                break
+        if not url:
+            return
+
+        bg = self.download_mp3(url, "podcast/bgmusic.mp3")
+        podcast = AudioSegment.from_mp3(podcast_path)
+        music = AudioSegment.from_mp3(bg) - volume_reduction_db
+
+        loops = (len(podcast) // len(music)) + 1
+        looped = (music * loops)[:len(podcast)]
+
+        mixed = podcast.overlay(looped)
+        mixed.export(podcast_path, format="mp3")
+        os.remove(bg)
 
     def generate_podcast(
         self,
@@ -273,55 +237,50 @@ class PodcastGenerator:
         background_music=True,
         manual=False,
     ):
-        if source_type == "Wikipedia":
-            content_text = self.get_wikipedia_summary(source)
-        elif source_type == "PDF":
-            content_text = self.extract_text_from_pdf(source)
-        elif source_type == "TXT":
-            content_text = self.extract_text_from_txt(source)
-        elif source_type == "YouTube":
-            content_text = self.extract_youtube_transcript(source)
-        else:
-            raise ValueError(f"Unsupported source type: {source_type}")
+        os.makedirs("podcast/chunks", exist_ok=True)
+        os.makedirs("podcast", exist_ok=True)
 
-        dialogues = self.summarize_and_format_dialogue(content_text, speakers, target_length)
+        if source_type == "PDF":
+            text = self.extract_text_from_pdf(source)
+        elif source_type == "TXT":
+            text = self.extract_text_from_txt(source)
+        elif source_type == "Wikipedia":
+            text = self.get_wikipedia_summary(source)
+        elif source_type == "YouTube":
+            text = self.extract_youtube_transcript(source)
+        else:
+            raise RuntimeError("Invalid source type")
+
+        dialogues = self.summarize_and_format_dialogue(text, speakers, target_length)
+        self.cleanup_chunks()
+
+        chunk_files = []
         total = len(dialogues)
 
-        for i, (speaker, line) in enumerate(dialogues, 1):
+        for i, (speaker, line) in enumerate(dialogues):
             if stop_callback and stop_callback():
                 self.stopped_early = True
-                break
-            filename = f"podcast/chunks/{i}_{speaker}.mp3"
+                return
+            filename = f"podcast/chunks/{i}.mp3"
             self.text_to_speech(line, speaker, filename)
+            chunk_files.append(filename)
             if progress_callback:
-                progress_callback(i, total)
+                progress_callback(i + 1, total)
 
         combined = AudioSegment.empty()
-        for f in glob.glob("podcast/chunks/*.mp3"):
-            combined += AudioSegment.from_mp3(f)
+        for c in chunk_files:
+            combined += AudioSegment.from_mp3(c)
 
-        from urllib.parse import unquote
-
-        base_name = ""
-        if source_type in ["PDF", "TXT"]:
-            base_name = pathlib.Path(source).stem
-        elif source_type == "Wikipedia":
-            base_name = unquote(source.split("/")[-1])
-        elif source_type == "YouTube":
-            base_name = source.split("v=")[-1] if "v=" in source else source.split("/")[-1]
-        else:
-            base_name = "final"
-
-        output_path = f"podcast/{base_name}.mp3"
+        base = pathlib.Path(source).stem if source_type != "Wikipedia" else "wikipedia_podcast"
+        output_path = f"podcast/{base}.mp3"
         counter = 1
         while os.path.exists(output_path):
-            output_path = f"podcast/{base_name}({counter}).mp3"
+            output_path = f"podcast/{base}({counter}).mp3"
             counter += 1
 
         combined.export(output_path, format="mp3")
 
         if background_music:
-            bg_output_path = output_path.replace(".mp3", "_with_bgmusic.mp3")
-            self.mix_background_music(output_path, output_path=bg_output_path, background_music=True)
+            self.mix_background_music(output_path, background_music=True)
 
-
+        self.log(f"✅ Podcast ready: {output_path}")
