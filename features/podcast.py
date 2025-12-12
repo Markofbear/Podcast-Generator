@@ -194,19 +194,32 @@ class PodcastGenerator:
         else:
             raise ValueError(f"Unsupported TTS provider: {self.provider}")
 
-    def mix_background_music(self, podcast_path, output_path="podcast/final_with_bgmusic.mp3", volume_reduction_db=20):
+    def mix_background_music(self, podcast_path, output_path=None, volume_reduction_db=20, background_music=True):
+        if not background_music:
+            return 
+
         url, title, artist = self.fetch_jamendo_track("lofi")
         if not url:
+            self.log("❌ No background track found.")
             return
+
         bg_path = self.download_mp3(url, "podcast/bgmusic.mp3")
         podcast = AudioSegment.from_mp3(podcast_path)
         bg_music = AudioSegment.from_mp3(bg_path) - volume_reduction_db
+
         loops_needed = (len(podcast) // len(bg_music)) + 1
         bg_music_looped = bg_music * loops_needed
         bg_music_looped = bg_music_looped[:len(podcast)]
+
         mixed = podcast.overlay(bg_music_looped)
+
+        if output_path is None:
+            output_path = podcast_path.replace(".mp3", "_with_bgmusic.mp3")
+
         mixed.export(output_path, format="mp3")
         os.remove(bg_path)
+        self.log(f"✅ Podcast with background music saved to {output_path}")
+
 
     def fetch_jamendo_track(self, tag="lofi"):
         try:
@@ -260,8 +273,8 @@ class PodcastGenerator:
             raise ValueError(f"Unsupported source type: {source_type}")
 
         dialogues = self.summarize_and_format_dialogue(content_text, speakers, target_length)
-
         total = len(dialogues)
+
         for i, (speaker, line) in enumerate(dialogues, 1):
             if stop_callback and stop_callback():
                 self.stopped_early = True
@@ -274,6 +287,7 @@ class PodcastGenerator:
         combined = AudioSegment.empty()
         for f in glob.glob("podcast/chunks/*.mp3"):
             combined += AudioSegment.from_mp3(f)
+
         from urllib.parse import unquote
 
         base_name = ""
@@ -296,5 +310,6 @@ class PodcastGenerator:
 
         if background_music:
             bg_output_path = output_path.replace(".mp3", "_with_bgmusic.mp3")
-            self.mix_background_music(output_path, output_path=bg_output_path)
+            self.mix_background_music(output_path, output_path=bg_output_path, background_music=True)
+
 
