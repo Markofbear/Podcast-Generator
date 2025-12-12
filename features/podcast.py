@@ -276,6 +276,7 @@ class PodcastGenerator:
             combined += AudioSegment.from_mp3(f)
         from urllib.parse import unquote
 
+        base_name = ""
         if source_type in ["PDF", "TXT"]:
             base_name = pathlib.Path(source).stem
         elif source_type == "Wikipedia":
@@ -286,11 +287,14 @@ class PodcastGenerator:
             base_name = "final"
 
         output_path = f"podcast/{base_name}.mp3"
+        counter = 1
+        while os.path.exists(output_path):
+            output_path = f"podcast/{base_name}({counter}).mp3"
+            counter += 1
+
         combined.export(output_path, format="mp3")
 
         if background_music:
-            self.mix_background_music(output_path, output_path=f"podcast/{base_name}_with_bgmusic.mp3")
+            bg_output_path = output_path.replace(".mp3", "_with_bgmusic.mp3")
+            self.mix_background_music(output_path, output_path=bg_output_path)
 
-
-        if background_music:
-            self.mix_background_music(output_path)
