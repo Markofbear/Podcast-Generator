@@ -23,49 +23,60 @@ class PodcastGenerator:
         self.provider = provider
         self.log = log_func
         self.manuscript_creator = manuscript_creator
-
         os.makedirs("podcast/chunks", exist_ok=True)
         os.makedirs("podcast", exist_ok=True)
 
         self.voice_map = {
-            "Bonnie": {"google": "en-US-Wavenet-C", "elevenlabs": "lxYfHSkYm1EzQzGhdbfc", "pyttsx3": "Zira", "openai": "alloy"},
-            "Clyde":  {"google": "en-US-Wavenet-D", "elevenlabs": "pVnrL6sighQX7hVz89cp", "pyttsx3": "David", "openai": "ballad"},
-            "Alice":  {"google": "en-US-Wavenet-F", "elevenlabs": "aEO01A4wXwd1O8GPgGlF", "pyttsx3": "Hazel", "openai": "verse"},
-            "Bob":    {"google": "en-US-Wavenet-B", "elevenlabs": "UgBBYS2sOqTuMpoF3BR0", "pyttsx3": "David", "openai": "coral"},
+            "Bonnie": {
+                "pyttsx3": "Zira",
+                "google": "en-US-Wavenet-F",
+                "elevenlabs": "Bella",
+                "openai": "alloy",
+            },
+            "Clyde": {
+                "pyttsx3": "David",
+                "google": "en-US-Wavenet-D",
+                "elevenlabs": "Elliot",
+                "openai": "verse",
+            },
+            "Alice": {
+                "pyttsx3": "Microsoft Hazel Desktop",
+                "google": "en-US-Wavenet-C",
+                "elevenlabs": "Clara",
+                "openai": "echo",
+            },
+            "Bob": {
+                "pyttsx3": "Microsoft Guy Desktop",
+                "google": "en-US-Wavenet-B",
+                "elevenlabs": "Leo",
+                "openai": "shimmer",
+            },
         }
 
-        self.gcp_client = texttospeech.TextToSpeechClient() if provider == "google" else None
-        self.eleven_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY")) if provider == "elevenlabs" else None
-        genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-        openai.api_key = os.getenv("OPENAI_API_KEY")
-        if not openai.api_key and manuscript_creator.startswith("OpenAI"):
-            raise RuntimeError("OPENAI_API_KEY missing")
-
-    def summarize_and_format_dialogue(self, text, speakers, target_length):
+    def summarize_and_format_dialogue(self, text, speakers, target_words):
         if not text.strip():
             raise RuntimeError("Empty text")
-
-        length_map = {"Short": 500, "Medium": 1500, "Long": 3000}
-        target_words = length_map.get(target_length.split()[0], 1500)
 
         speaker_list = ", ".join(speakers)
 
         base_prompt = f"""
-    You are creating an engaging dialogue script for a podcast. 
-    The dialogue is between {speaker_list}. 
-    The purpose is to clearly convey all **important and relevant information** from the source document, suitable for someone onboarding or learning the topic. 
+You are creating an engaging dialogue script for a podcast that will give important information for onbording based on the text input. 
+The dialogue is between {speaker_list}. 
+The purpose is to clearly convey all important and relevant information from the source document, suitable for someone onboarding or learning the topic. 
+IMPORTANT: Only use these speaker names: Bonnie, Clyde, Alice, Bob.
+Do NOT include section headers, titles, or extra text.
+Every line must start with a valid speaker.
 
-    Requirements:
-    - Target approximately {target_words} words.
-    - Begin with a clear introduction to the topic.
-    - Maintain natural, conversational dialogue.
-    - Each line must be prefixed with the speaker's name like: SpeakerName: line
-    - Include only relevant details; skip irrelevant fluff.
+Requirements:
+- Target AT LEAST {target_words} words.
+- Begin with a clear introduction to the topic.
+- Maintain natural, conversational dialogue.
+- Each line must be prefixed with the speaker's name like: SpeakerName: line
+- Include only relevant details; skip irrelevant fluff.
 
-    Source Document:
-    {text}
-    """
-
+Source Document:
+{text}
+"""
 
         if self.manuscript_creator.startswith("OpenAI"):
             resp = openai.chat.completions.create(
@@ -84,6 +95,7 @@ class PodcastGenerator:
 
         return self.create_dialogue(dialogue_text)
 
+
     def create_dialogue(self, dialogue_text):
         lines = dialogue_text.strip().split("\n")
         dialogues = []
@@ -93,12 +105,18 @@ class PodcastGenerator:
             speaker, text = line.split(":", 1)
             speaker = speaker.strip().replace("*", "").replace("**", "").strip()
             text = text.strip()
+            if not text:
+                continue
             if speaker not in self.voice_map:
-                raise RuntimeError(f"Unknown speaker: {speaker}")
+                self.log(f"⚠ Unknown speaker '{speaker}', using default voice 'Bonnie'")
+                speaker = "Bonnie"
             dialogues.append((speaker, text))
         if not dialogues:
             raise RuntimeError("Empty parsed dialogue")
         return dialogues
+
+
+
 
     def cleanup_chunks(self):
         for f in glob.glob("podcast/chunks/*.mp3"):

@@ -46,9 +46,12 @@ class PodcastGeneratorUI(QWidget):
         left_layout.addWidget(logo_label)
 
         self.length_dropdown = QComboBox()
-        self.length_dropdown.addItems(["Short (5 min)", "Medium (10 min)", "Long (20 min)"])
+        self.length_dropdown.addItem("Short (5 min)", 500)
+        self.length_dropdown.addItem("Medium (10 min)", 1500)
+        self.length_dropdown.addItem("Long (20 min)", 3000)
         left_layout.addWidget(QLabel("Select Podcast Length:"))
         left_layout.addWidget(self.length_dropdown)
+
 
         self.manuscript_dropdown = QComboBox()
         self.manuscript_dropdown.addItems(["OpenAI", "Hugging Face (Free)", "Gemini 2.0"])
@@ -175,7 +178,7 @@ class PodcastGeneratorUI(QWidget):
         provider = self.provider_dropdown.currentData()
         manuscript_creator = self.manuscript_dropdown.currentText()
         speakers = [item.text() for item in self.speaker_list.selectedItems()]
-        target_length = self.length_dropdown.currentText()
+        target_length = self.length_dropdown.currentData()
 
         if not source:
             self.log("❌ Please enter a valid source.")
@@ -232,7 +235,7 @@ class PodcastGeneratorUI(QWidget):
             source_type,
             provider,
             speakers,
-            target_length,
+            target_length, 
             self.check_stop,
             background_music,
             manual=manual_mode,
