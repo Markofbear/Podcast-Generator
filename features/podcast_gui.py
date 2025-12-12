@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QCheckBox,
     QHBoxLayout,
+    QDialog,
 )
 from PySide6.QtGui import QPixmap
 from PySide6.QtCore import Qt, QThread
@@ -22,7 +23,6 @@ from dotenv import load_dotenv
 
 from features.podcast import PodcastGenerator
 from features.manuscript_dialog import ManuscriptReviewDialog
-from PySide6.QtWidgets import QDialog
 
 
 class PodcastGeneratorUI(QWidget):
@@ -46,9 +46,7 @@ class PodcastGeneratorUI(QWidget):
         left_layout.addWidget(logo_label)
 
         self.length_dropdown = QComboBox()
-        self.length_dropdown.addItems(
-            ["Short (5 min)", "Medium (10 min)", "Long (20 min)"]
-        )
+        self.length_dropdown.addItems(["Short (5 min)", "Medium (10 min)", "Long (20 min)"])
         left_layout.addWidget(QLabel("Select Podcast Length:"))
         left_layout.addWidget(self.length_dropdown)
 
@@ -69,15 +67,9 @@ class PodcastGeneratorUI(QWidget):
 
         self.provider_dropdown = QComboBox()
         self.provider_dropdown.addItem("pyttsx3 (Low Quality - Free)", "pyttsx3")
-        self.provider_dropdown.addItem(
-            "Google (Mid Quality - API Key Required)", "google"
-        )
-        self.provider_dropdown.addItem(
-            "ElevenLabs (High Quality - Account Required)", "elevenlabs"
-        )
-        self.provider_dropdown.addItem(
-            "OpenAI (Mid-High Quality - API Key Required)", "openai"
-        )
+        self.provider_dropdown.addItem("Google (Mid Quality - API Key Required)", "google")
+        self.provider_dropdown.addItem("ElevenLabs (High Quality - Account Required)", "elevenlabs")
+        self.provider_dropdown.addItem("OpenAI (Mid-High Quality - API Key Required)", "openai")
         left_layout.addWidget(QLabel("Select Voice:"))
         left_layout.addWidget(self.provider_dropdown)
 
@@ -127,10 +119,16 @@ class PodcastGeneratorUI(QWidget):
 
         main_layout.addLayout(left_layout, stretch=3)
         main_layout.addLayout(right_layout, stretch=2)
-
         self.setLayout(main_layout)
+
         self.toggle_source_input(0)
 
+        self.manuscript_dropdown = QComboBox()
+        self.manuscript_dropdown.addItems(["OpenAI GPT-4", "Hugging Face (Free)", "Gemini 2.0"])
+        left_layout.addWidget(QLabel("Select Manuscript Creator:"))
+        left_layout.addWidget(self.manuscript_dropdown)
+
+    # --- Core Methods ---
     def log(self, message):
         self.log_output.append(message)
         QApplication.processEvents()
@@ -140,12 +138,10 @@ class PodcastGeneratorUI(QWidget):
         if source_type in ["Wikipedia", "YouTube"]:
             self.browse_button.setVisible(False)
             self.source_input.setEnabled(True)
-            placeholder = (
-                "Enter Wikipedia URL" if source_type == "Wikipedia" else "Enter YouTube URL"
-            )
+            placeholder = "Enter Wikipedia URL" if source_type == "Wikipedia" else "Enter YouTube URL"
             self.source_input.setPlaceholderText(placeholder)
             self.source_input.clear()
-        else:  # PDF or TXT
+        else:
             self.browse_button.setVisible(True)
             self.source_input.setEnabled(False)
             self.source_input.setPlaceholderText("Selected file will appear here")
@@ -153,9 +149,7 @@ class PodcastGeneratorUI(QWidget):
 
     def browse_file(self):
         file_filter = "PDF files (*.pdf);;Text files (*.txt);;All files (*.*)"
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select Source File", "", file_filter
-        )
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Source File", "", file_filter)
         if file_path:
             self.source_input.setText(file_path)
 
@@ -179,22 +173,9 @@ class PodcastGeneratorUI(QWidget):
         source = self.source_input.text().strip()
         source_type = self.source_type_dropdown.currentText()
         provider = self.provider_dropdown.currentData()
+        manuscript_creator = self.manuscript_dropdown.currentText()
         speakers = [item.text() for item in self.speaker_list.selectedItems()]
         target_length = self.length_dropdown.currentText()
-
-        pg = PodcastGenerator(provider, log_func=self.log)
-
-        if source_type == "Wikipedia":
-            content_text = pg.get_wikipedia_summary(source)
-        elif source_type == "PDF":
-            content_text = pg.extract_text_from_pdf(source)
-        elif source_type == "TXT":
-            content_text = pg.extract_text_from_txt(source)
-        elif source_type == "YouTube":
-            content_text = pg.extract_youtube_transcript(source)
-        else:
-            self.log("❌ Unsupported source type.")
-            return
 
         if not source:
             self.log("❌ Please enter a valid source.")
@@ -203,9 +184,25 @@ class PodcastGeneratorUI(QWidget):
             self.log("❌ Please select at least two speakers.")
             return
 
-        dialogues = pg.summarize_and_format_dialogue(
-            content_text, speakers, target_length
-        )
+        pg = PodcastGenerator(provider, log_func=self.log, manuscript_creator=manuscript_creator)
+
+        try:
+            if source_type == "Wikipedia":
+                content_text = pg.get_wikipedia_summary(source)
+            elif source_type == "PDF":
+                content_text = pg.extract_text_from_pdf(source)
+            elif source_type == "TXT":
+                content_text = pg.extract_text_from_txt(source)
+            elif source_type == "YouTube":
+                content_text = pg.extract_youtube_transcript(source)
+            else:
+                self.log("❌ Unsupported source type.")
+                return
+        except Exception as e:
+            self.log(f"❌ Failed to extract content: {e}")
+            return
+
+        dialogues = pg.summarize_and_format_dialogue(content_text, speakers, target_length)
         manus = "\n".join(f"{speaker}: {text}" for speaker, text in dialogues)
 
         dialog = ManuscriptReviewDialog(manus)
@@ -239,21 +236,20 @@ class PodcastGeneratorUI(QWidget):
             self.check_stop,
             background_music,
             manual=manual_mode,
+            manuscript_creator=manuscript_creator,  # ensures Gemini/OpenAI selection
         )
         self.worker.moveToThread(self.thread)
 
         self.worker.log_signal.connect(self.log)
         self.worker.progress_signal.connect(self.update_progress)
-        self.worker.stopped_signal.connect(
-            lambda: self.log("🛑 Podcast generation stopped.")
-        )
+        self.worker.stopped_signal.connect(lambda: self.log("🛑 Podcast generation stopped."))
         self.worker.finished.connect(self.on_generation_finished)
 
         self.thread.started.connect(self.worker.run)
         self.thread.finished.connect(self.thread.deleteLater)
-
         self.thread.start()
 
+    # --- Finishing / UI ---
     def on_generation_finished(self):
         self.stop_button.setEnabled(False)
         self.progress_bar.setVisible(False)
@@ -273,9 +269,7 @@ class PodcastGeneratorUI(QWidget):
         event.accept()
 
     def play_latest_podcast(self):
-        podcast_files = sorted(
-            glob.glob("podcast/*.mp3"), key=os.path.getmtime, reverse=True
-        )
+        podcast_files = sorted(glob.glob("podcast/*.mp3"), key=os.path.getmtime, reverse=True)
         if not podcast_files:
             self.log("❌ No podcast files found.")
             return
